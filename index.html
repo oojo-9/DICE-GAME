@@ -169,6 +169,12 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .notice b{font-weight:400;font-size:20px;color:var(--ivory)}
 .notice strong{font-family:var(--display);font-weight:400;font-size:40px;line-height:1.15;color:var(--brass);word-break:keep-all}
 .notice span{font-size:17px;color:var(--ivory-dim)}
+.notice .askbtns{flex-direction:row;gap:10px;margin-top:14px;max-width:none}
+.askbtns button{flex:1;min-width:110px;height:54px;border-radius:14px;font-family:var(--display);font-size:19px}
+.askbtns .no{border:2px solid var(--ivory);color:var(--ivory)}
+.askbtns .yes{background:var(--brass);color:var(--ink)}
+.warn{margin:0;padding:12px 14px;border-radius:12px;border:1.5px solid var(--heart);background:rgba(214,54,46,.16);color:var(--ivory);font-size:14.5px;line-height:1.55;text-align:center;word-break:keep-all}
+.warn b{color:var(--brass);font-weight:400}
 .setup{z-index:20;overflow-y:auto}
 .setup-in{width:100%;max-width:420px;margin:auto;padding:28px 20px;display:flex;flex-direction:column;gap:18px}
 .setup h1{margin:0;font-family:var(--display);font-weight:400;font-size:64px;line-height:1;text-align:center}
@@ -239,7 +245,9 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 </div>
 
 <div class="toast" id="toast" role="status"></div>
-<div class="notice" id="notice" role="status" hidden><div><b id="noticeWho"></b><strong id="noticeWhat"></strong><span>등록했습니다</span></div></div>
+<div class="notice" id="notice" role="status" hidden><div><b id="noticeWho"></b><strong id="noticeWhat"></strong><span id="noticeTail"></span></div></div>
+<div class="notice" id="ask" role="alertdialog" aria-labelledby="askWhat" hidden><div><b id="askWho"></b><strong id="askWhat">퇴장을 요청합니다</strong><span>동의하면 이 사람은 방에서 나가고, 남은 사람끼리 이어서 해요</span>
+  <div class="askbtns"><button class="no" id="askNo">거절</button><button class="yes" id="askYes">동의</button></div></div></div>
 
 <div class="sheet" id="sheet" hidden>
   <div class="sheet-in">
@@ -289,6 +297,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
       <button class="btn roll" id="btnLobbyStart">게임 시작</button>
       <p class="msg" id="lobbyWait">방장이 시작하기를 기다리는 중…</p>
       <button class="mini" id="btnLeave">방 나가기</button>
+      <p class="warn" id="lobbyWarn"><b>게임 시작</b> 버튼을 누르면 상대가 들어올 수 없어요.<br>상대가 입장한 것을 확인한 후 <b>게임 시작</b>을 눌러주세요.</p>
     </div>
   </div>
 </div>
@@ -749,11 +758,11 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   $('btnReset').addEventListener('click',function(){
     if(rolling)return;
     if(!resetArmed){
-      resetArmed=true;$('btnReset').textContent=online?'한 번 더 누르면 방 나가기':'한 번 더 누르면 삭제';$('btnReset').classList.add('arm');
+      resetArmed=true;$('btnReset').textContent=!online?'한 번 더 누르면 삭제':midGame()?'한 번 더 누르면 퇴장 요청':'한 번 더 누르면 방 나가기';$('btnReset').classList.add('arm');
       resetT=setTimeout(disarmReset,3000);return;
     }
     disarmReset();
-    if(online){leaveRoom();return}
+    if(online){if(midGame())requestLeave();else leaveRoom();return}
     try{localStorage.removeItem(KEY)}catch(e){}
     S=fresh();resetDice();place();showSetup();
   });
@@ -882,9 +891,10 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   }
   function isMe(pl){return pl.id===myUid}
   var seenLast=null,noticeT=0;
-  function notice(l){
-    $('noticeWho').textContent=l.who+'님이';
-    $('noticeWhat').textContent=l.cat+' '+l.pts+'점';
+  function notice(who,what,tail){
+    $('noticeWho').textContent=who;
+    $('noticeWhat').textContent=what;
+    $('noticeTail').textContent=tail||'';
     $('notice').hidden=false;
     clearTimeout(noticeT);noticeT=setTimeout(function(){$('notice').hidden=true},2600);
   }
@@ -895,10 +905,13 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     if(st.by===myUid&&st.seq===pushedSeq)return;   // 내가 방금 보낸 것
     if(rolling)return;
     var wasMine=S.started&&myTurn();
+    var nowIds=(st.players||[]).map(function(pl){return pl.id});
+    var gone=S.players.filter(function(pl){return pl.id!==myUid&&nowIds.indexOf(pl.id)<0});
+    if(gone.length&&nowIds.indexOf(myUid)>=0)notice(gone.map(function(pl){return pl.name}).join(', ')+'님이','퇴장하셨습니다','');
     lastSeq=st.seq||0;
     // 다른 사람이 점수를 등록하면 화면 가득 알려 준다 (방에 막 들어왔을 때의 지난 기록은 건너뛴다)
     var ln=st.last?st.last.n:0;
-    if(seenLast!==null&&ln&&ln!==seenLast&&st.by!==myUid)notice(st.last);
+    if(seenLast!==null&&ln&&ln!==seenLast&&st.by!==myUid)notice(st.last.who+'님이',st.last.cat+' '+st.last.pts+'점','등록했습니다');
     seenLast=ln;
     S={started:!!st.started,
        players:(st.players||[]).map(function(pl){return {id:pl.id,name:pl.name,scores:pl.scores||{}}}),
@@ -924,16 +937,49 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     if(!remoteRolling){remoteRolling=true;t.forEach(function(i){shade(i,false)});render()}
     diceIn(v.d,t);
   }
+  // 게임 도중 퇴장: 요청을 올리고, 남은 사람이 모두 동의해야 나갈 수 있다
+  var leaveRef=null,leavePending=false,answered=0;
+  function midGame(){return online&&S.started&&!gameOver()&&S.players.length>1}
+  function requestLeave(){
+    if(leavePending||!leaveRef)return;
+    var me=S.players.filter(isMe)[0];
+    leavePending=true;
+    leaveRef.set({id:myUid,name:me?me.name:'플레이어',n:Date.now()}).catch(function(){leavePending=false});
+    toast('퇴장을 요청했어요. 상대의 동의를 기다리는 중…');
+  }
+  function onLeave(snap){
+    var v=snap.val();
+    if(!v){$('ask').hidden=true;return}
+    if(v.id===myUid){
+      if(!leavePending)return;
+      var others=S.players.filter(function(pl){return pl.id!==myUid}),ok=v.ok||{};
+      if(v.no){leavePending=false;leaveRef.remove();toast('상대가 퇴장을 거절했어요');return}
+      if(others.every(function(pl){return ok[pl.id]})){leavePending=false;leaveRef.remove();leaveRoom()}
+      return;
+    }
+    if(answered===v.n||!S.players.some(isMe))return;
+    $('askWho').textContent=v.name+'님이';
+    $('ask').dataset.n=v.n;$('ask').hidden=false;
+  }
+  function answer(key){
+    var n=+$('ask').dataset.n;answered=n;$('ask').hidden=true;
+    if(leaveRef)leaveRef.child(key+'/'+myUid).set(true);
+  }
+  $('askYes').addEventListener('click',function(){answer('ok')});
+  $('askNo').addEventListener('click',function(){answer('no')});
+
   function attach(code){
     room=code;online=true;lastSeq=0;pushedSeq=-1;liveFirst=true;seenLast=null;
     try{localStorage.setItem(ROOMKEY,code)}catch(e){}
     stateRef=db.ref('rooms/'+code+'/state');liveRef=db.ref('rooms/'+code+'/live');
+    leaveRef=db.ref('rooms/'+code+'/leave');leavePending=false;answered=0;
     stateRef.on('value',onState,function(e){netErr(e)});
     liveRef.on('value',onLive);
+    leaveRef.on('value',onLeave);
   }
   function leaveLocal(){
-    if(stateRef)stateRef.off();if(liveRef)liveRef.off();
-    stateRef=liveRef=null;online=false;room=null;remoteRolling=false;
+    if(stateRef)stateRef.off();if(liveRef)liveRef.off();if(leaveRef)leaveRef.off();
+    stateRef=liveRef=leaveRef=null;leavePending=false;$('ask').hidden=true;online=false;room=null;remoteRolling=false;
     try{localStorage.removeItem(ROOMKEY)}catch(e){}
     document.body.classList.remove('spectate');
     var su=S.setup;S=fresh();S.setup=su;
@@ -963,7 +1009,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     $('lobbyCode').textContent=room;
     $('lobbyList').innerHTML=S.players.map(function(pl,i){return '<li>'+esc(pl.name)+(pl.id===myUid?' (나)':'')+(i===0?'<span>방장</span>':'')+'</li>'}).join('');
     var host=!!S.players[0]&&S.players[0].id===myUid;
-    $('btnLobbyStart').hidden=!host;$('lobbyWait').hidden=host;
+    $('btnLobbyStart').hidden=!host;$('lobbyWait').hidden=host;$('lobbyWarn').hidden=!host;
     $('setup').hidden=false;setMode('lobby');
   }
   function myNick(){
