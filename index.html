@@ -313,7 +313,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 (function(){
   // 배포 도장. 커밋할 때 자동으로 바뀐다. 열려 있는 화면이 예전 버전이면 스스로 새로 받아 온다
   // (온라인에서 기기마다 버전이 다르면 알림 문구 같은 것이 어긋난다)
-  var BUILD='20261007-170733';
+  var BUILD='20261007-171254';
   function checkUpdate(){
     if(location.protocol==='file:')return;
     fetch(location.pathname+'?_='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){
@@ -325,6 +325,8 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   }
   checkUpdate();
   document.addEventListener('visibilitychange',function(){if(!document.hidden)checkUpdate()});
+  setInterval(function(){if(online&&!document.hidden)checkUpdate()},90000);
+  function newer(v){return typeof v==='string'&&BUILD!=='dev'&&v!=='dev'&&v>BUILD}
   var sum=function(d){return d.reduce(function(a,b){return a+b},0)};
   var counts=function(d){var c=[0,0,0,0,0,0,0];d.forEach(function(v){c[v]++});return c};
   var num=function(n){return function(d){return d.filter(function(v){return v===n}).length*n}};
@@ -945,7 +947,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   function push(){
     if(!stateRef)return;
     lastSeq++;pushedSeq=lastSeq;
-    stateRef.set({started:S.started,players:S.players,turn:S.turn,vals:S.vals,held:S.held,rollsLeft:S.rollsLeft,dice:diceOut(),last:S.last||null,yn:S.yn||null,by:myUid,seq:lastSeq})
+    stateRef.set({started:S.started,players:S.players,turn:S.turn,vals:S.vals,held:S.held,rollsLeft:S.rollsLeft,dice:diceOut(),last:S.last||null,yn:S.yn||null,v:BUILD,by:myUid,seq:lastSeq})
       .catch(function(){toast('연결이 불안정해요. 다시 시도해 주세요')});
   }
   function isMe(pl){return pl.id===myUid}
@@ -961,6 +963,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   function onState(snap){
     var st=snap.val();
     if(!st){if(online){leaveLocal();netMsg('방이 없어졌어요')}return}
+    if(newer(st.v))checkUpdate();
     if(st.by===myUid&&st.seq===pushedSeq)return;   // 내가 방금 보낸 것
     if(rolling){cancelAnimationFrame(raf);rolling=false;holding=false;$('btnRoll').style.setProperty('--p','0%')}
     lastAct=Date.now();absentAt=0;
@@ -1002,12 +1005,13 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     diceIn(v.d,t);
   }
   // 게임 도중 퇴장: 요청을 올리고, 남은 사람이 모두 동의해야 나갈 수 있다
-  var leaveRef=null,leavePending=false,answered=0,leaveVal=null;
+  var leaveRef=null,leavePending=false,answered=0,leaveVal=null,seenHere={};
+  function voters(){return S.players.filter(function(pl){return pl.id!==myUid&&(pres[pl.id]||!seenHere[pl.id])})}
   // 요청한 쪽: 접속 중인 모든 사람이 동의/거절을 고를 때까지 기다린 뒤에 결과를 낸다
   function judgeLeave(){
     var v=leaveVal;
     if(!leavePending||!v||v.id!==myUid||!leaveRef)return;
-    var others=S.players.filter(function(pl){return pl.id!==myUid&&pres[pl.id]}),ok=v.ok||{},no=v.no||{};
+    var others=voters(),ok=v.ok||{},no=v.no||{};
     if(!others.every(function(pl){return ok[pl.id]||no[pl.id]}))return;
     leavePending=false;leaveRef.remove();
     if(others.some(function(pl){return no[pl.id]}))toast('퇴장이 거절됐어요');
@@ -1017,7 +1021,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   function requestLeave(){
     if(!leaveRef)return;
     if(leavePending){leavePending=false;leaveRef.remove();toast('퇴장 요청을 취소했어요');return}
-    if(!S.players.some(function(pl){return pl.id!==myUid&&pres[pl.id]})){leaveRoom();return}
+    if(!voters().length){leaveRoom();return}
     var me=S.players.filter(isMe)[0];
     leavePending=true;
     leaveRef.set({id:myUid,name:me?me.name:'플레이어',n:Date.now()}).catch(function(){leavePending=false});
@@ -1046,7 +1050,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   function onConn(snap){
     if(!snap.val()||!presRef)return;
     var mine=presRef.child(myUid);
-    mine.onDisconnect().remove();mine.set(true);
+    mine.onDisconnect().remove();mine.set(BUILD);
   }
   function skipState(){
     var b=$('btnSkip');
@@ -1065,7 +1069,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
       clearTimeout(skipArmT);skipArmT=setTimeout(function(){skipArmed=false;skipState()},3000);return;
     }
     skipArmed=false;clearTimeout(skipArmT);$('btnSkip').hidden=true;
-    var target=P().id,uid=myUid,me=S.players.filter(isMe)[0],myName=me?me.name:'플레이어',ids=ALL.map(function(c){return c.id});
+    var target=P().id,tname=P().name,uid=myUid,me=S.players.filter(isMe)[0],myName=me?me.name:'플레이어',ids=ALL.map(function(c){return c.id});
     stateRef.transaction(function(cur){
       if(!cur||!cur.started||!cur.players)return cur;
       var ps=cur.players,t=cur.turn||0;
@@ -1078,7 +1082,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
       cur.last={who:ps[t].name+'님의',what:'차례를 넘겼어요',tail:myName+'님이 넘겼습니다',n:Date.now()};
       cur.by=uid;cur.seq=(cur.seq||0)+1;
       return cur;
-    }).then(function(res){if(res&&res.committed)toast('차례를 넘겼어요')}).catch(function(){toast('연결이 불안정해요. 다시 시도해 주세요')});
+    }).then(function(res){if(res&&res.committed)notice(tname+'님의','차례를 넘겼어요','내가 넘겼습니다')}).catch(function(){toast('연결이 불안정해요. 다시 시도해 주세요')});
   });
 
   function attach(code){
@@ -1089,9 +1093,13 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     stateRef.on('value',onState,function(e){netErr(e)});
     liveRef.on('value',onLive);
     leaveRef.on('value',onLeave);
-    lastAct=Date.now();absentAt=0;pres={};
+    lastAct=Date.now();absentAt=0;pres={};seenHere={};
     presRef=db.ref('rooms/'+code+'/presence');connRef=db.ref('.info/connected');
-    presRef.on('value',function(sn){pres=sn.val()||{};judgeLeave()});
+    presRef.on('value',function(sn){
+      pres=sn.val()||{};
+      Object.keys(pres).forEach(function(k){seenHere[k]=1;if(newer(pres[k]))checkUpdate()});
+      judgeLeave();
+    });
     connRef.on('value',onConn);
   }
   function leaveLocal(){
