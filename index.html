@@ -189,8 +189,8 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .stepper button{width:46px;height:46px;border-radius:50%;border:1.5px solid var(--ivory);font-size:24px;line-height:1}
 .stepper button:disabled{opacity:.3}
 .stepper b{min-width:44px;text-align:center;font-family:var(--display);font-weight:400;font-size:30px;color:var(--brass)}
-.modes{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:4px;border-radius:14px;background:rgba(0,0,0,.35)}
-.modes button{height:42px;border-radius:10px;font-size:15px;color:var(--ivory-dim)}
+.modes{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:4px;border-radius:14px;background:rgba(0,0,0,.35)}
+.modes button{height:42px;border-radius:10px;font-size:13.5px;white-space:nowrap;color:var(--ivory-dim)}
 .modes button.on{background:var(--ivory);color:var(--ink)}
 .box{display:flex;flex-direction:column;gap:16px}
 .box .hint{margin:0;font-size:13px;color:var(--ivory-dim);text-align:center}
@@ -275,8 +275,9 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     <h1>야츄</h1>
     <p class="tag">주사위 다섯 개, 흔들기 세 번</p>
     <div class="modes" id="modes">
-      <button id="mLocal" class="on">한 기기로 같이</button>
-      <button id="mOnline">온라인으로 같이</button>
+      <button id="mLocal" class="on">한 기기로</button>
+      <button id="mOnline">온라인</button>
+      <button id="mAi">AI랑 대결</button>
     </div>
     <div class="box" id="localBox">
       <div class="count">
@@ -289,6 +290,11 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
       </div>
       <div class="names" id="names"></div>
       <button class="btn roll" id="btnStart">게임 시작</button>
+    </div>
+    <div class="box" id="aiBox" hidden>
+      <div class="names"><label><input id="aiName" type="text" maxlength="8" autocomplete="off" enterkeyhint="done" placeholder="내 닉네임"></label></div>
+      <p class="hint">내가 먼저 굴리고, AI가 이어서 스스로 굴리고 고정하고 점수를 기록해요</p>
+      <button class="btn roll" id="btnAiStart">AI와 대결 시작</button>
     </div>
     <div class="box" id="onlineBox" hidden>
       <div class="names"><label><input id="myName" type="text" maxlength="8" autocomplete="off" enterkeyhint="done" placeholder="내 닉네임"></label></div>
@@ -313,7 +319,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 (function(){
   // 배포 도장. 커밋할 때 자동으로 바뀐다. 열려 있는 화면이 예전 버전이면 스스로 새로 받아 온다
   // (온라인에서 기기마다 버전이 다르면 알림 문구 같은 것이 어긋난다)
-  var BUILD='20261007-171254';
+  var BUILD='20261007-171709';
   function checkUpdate(){
     if(location.protocol==='file:')return;
     fetch(location.pathname+'?_='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){
@@ -356,7 +362,9 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   // 온라인 상태. online이면 S는 방의 공유 상태를 그대로 따라간다
   var online=false,room=null,myUid=null,db=null,stateRef=null,liveRef=null,lastSeq=0,pushedSeq=-1,forcePush=false,
       remotePlacing=false,remoteRolling=false,liveSeq=0,lastLive=0,liveFirst=true,mode='local';
-  function myTurn(){return !online||(S.started&&!!P()&&P().id===myUid)}
+  var aiActing=false,aiAt=0;
+  function aiTurn(){return !online&&S.started&&!!P()&&!!P().ai&&!gameOver()}
+  function myTurn(){return online?(S.started&&!!P()&&P().id===myUid):!(S.started&&!!P()&&P().ai)}
   function save(){
     if(online){var go=forcePush||myTurn();forcePush=false;if(go)push();return true}
     try{localStorage.setItem(KEY,JSON.stringify(S));return true}catch(e){return false}
@@ -506,7 +514,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     $('btnScore').classList.toggle('nudge',mine&&!over&&rolled()&&S.rollsLeft===0);
     var who=(online&&mine?'<b>내 차례</b> · ':'<b>'+esc(p.name)+'</b> 차례 · '),msg;
     if(over){var w=winners();msg='게임 끝! 1등 <b>'+esc(w.names.join(', '))+'</b> '+w.score+'점'}
-    else if(!mine)msg=who+(remoteRolling?'굴리는 중…':!rolled()?'흔들기를 기다리는 중…':S.rollsLeft>0?'주사위를 고르는 중…':'점수를 기록하는 중…');
+    else if(!mine)msg=who+(remoteRolling||rolling?'굴리는 중…':!rolled()?'흔들기를 기다리는 중…':S.rollsLeft>0?'주사위를 고르는 중…':'점수를 기록하는 중…');
     else if(rolling)msg=who+'데굴데굴…';
     else if(!rolled())msg=who+'휴대폰을 흔들어 주사위를 굴리세요.';
     else if(S.rollsLeft>0)msg=who+'남길 주사위를 눌러 고정하고 다시 흔드세요.';
@@ -557,7 +565,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   }
 
   function beginRoll(quiet){
-    if(rolling||!S.started||!myTurn()||!$('sheet').hidden)return false;
+    if(rolling||!S.started||(!myTurn()&&!aiActing)||!$('sheet').hidden)return false;
     if(gameOver()){if(!quiet)toast('게임이 끝났어요. 점수확인에서 새 게임을 시작하세요');return false}
     if(S.rollsLeft===0){if(!quiet)toast('세 번 다 흔들었어요. 점수를 기록하세요');return false}
     rollTargets=[0,1,2,3,4].filter(function(i){return S.held.indexOf(i)<0});
@@ -671,6 +679,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     });
     S.rollsLeft--;rolling=false;holding=false;quietUntil=Date.now()+1000;
     if(isYacht()){S.yn=seenY=Date.now();celebrate()}
+    aiAt=Date.now()+1100;
     $('btnRoll').style.setProperty('--p','0%');
     if(navigator.vibrate){try{navigator.vibrate(40)}catch(e){}}
     render();save();
@@ -845,6 +854,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     S.last={who:P().name+'님이',what:c.name+' '+P().scores[c.id]+'점',tail:'등록했습니다',n:Date.now()};seenLast=S.last.n;   // 내가 등록한 것은 나에게 다시 알리지 않는다
     resetDice();
     if(!gameOver())S.turn=nextOpen(S.players,S.turn);
+    aiAt=Date.now()+1300;
     place();render();save();
     if(gameOver()){renderSheet();$('scroll').scrollTop=0}
     else{closeSheet();toast(P().name+' 차례예요')}
@@ -873,7 +883,8 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   function setMode(m){
     mode=m;
     $('modes').hidden=m==='lobby';
-    $('localBox').hidden=m!=='local';$('onlineBox').hidden=m!=='online';$('lobbyBox').hidden=m!=='lobby';
+    $('localBox').hidden=m!=='local';$('onlineBox').hidden=m!=='online';$('lobbyBox').hidden=m!=='lobby';$('aiBox').hidden=m!=='ai';
+    $('mAi').classList.toggle('on',m==='ai');
     $('mLocal').classList.toggle('on',m==='local');$('mOnline').classList.toggle('on',m==='online');
   }
   function showSetup(){renderNames();setMode(mode==='lobby'?'online':mode);$('setup').hidden=false}
@@ -892,6 +903,80 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     $('setup').hidden=true;place();render();save();
     toast(P().name+' 차례예요');
   });
+
+  // ===== AI 상대 =====
+  // 각 칸의 '평소 기대 점수'. 지금 점수가 이것보다 얼마나 좋은지로 칸의 가치를 잰다
+  var PAR={n1:2.2,n2:4.4,n3:6.6,n4:8.8,n5:11,n6:13.2,choice:21,four:7,full:9,small:9,large:10,yacht:4};
+  var UPN={n1:1,n2:2,n3:3,n4:4,n5:5,n6:6};
+  function worth(c,d){
+    var sc=c.fn(d),v=sc-PAR[c.id];
+    if(UPN[c.id])v+=(sc-3*UPN[c.id])*.6;      // 숫자 칸은 3개 이상 모아야 보너스(63점)에 가까워진다
+    return v;
+  }
+  function bestCat(d,open){
+    var b=null,bv=-1e9;
+    open.forEach(function(c){var v=worth(c,d);if(v>bv){bv=v;b=c}});
+    return {c:b,v:bv};
+  }
+  // 어떤 주사위를 남길지: 남기는 조합 32가지마다, 나머지를 다시 굴렸을 때 나올 수 있는 모든 경우의 평균 가치를 계산한다
+  function aiKeep(vals,open,rollsLeft){
+    var best=31,bestV=bestCat(vals,open).v;
+    for(var mask=0;mask<31;mask++){
+      var kept=[],k,i;
+      for(i=0;i<5;i++)if(mask>>i&1)kept.push(vals[i]);
+      k=5-kept.length;
+      var total=Math.pow(6,k),sum=0,d=kept.concat(new Array(k)),base=kept.length;
+      for(var n=0;n<total;n++){
+        var x=n;
+        for(i=0;i<k;i++){d[base+i]=1+x%6;x=Math.floor(x/6)}
+        sum+=bestCat(d,open).v;
+      }
+      var ev=sum/total+(rollsLeft-1)*.8;       // 한 번 더 굴릴 기회가 남았으면 조금 더 과감하게
+      if(ev>bestV+1e-9){bestV=ev;best=mask}
+    }
+    var keep=[];
+    for(var j=0;j<5;j++)if(best>>j&1)keep.push(j);
+    return keep;
+  }
+  function aiRoll(){
+    aiActing=true;lastMotion=0;
+    var ok=beginRoll(true);
+    aiActing=false;
+    if(ok){releasedAt=Date.now();kick(450+Math.random()*900)}
+  }
+  function aiStep(){
+    if(!aiTurn()||rolling||Date.now()<aiAt||!$('sheet').hidden||!$('party').hidden)return;
+    aiAt=Date.now()+1000;
+    if(!rolled()){aiRoll();return}
+    var pl=P(),open=ALL.filter(function(c){return !(c.id in pl.scores)});
+    if(S.rollsLeft>0){
+      var keep=aiKeep(S.vals,open,S.rollsLeft);
+      if(keep.length<5){
+        var same=keep.length===S.held.length&&keep.every(function(i){return S.held.indexOf(i)>=0});
+        if(!same){S.held=keep;place();render();save();return}   // 먼저 고정하는 모습을 보여 주고, 다음 박자에 굴린다
+        aiRoll();return;
+      }
+    }
+    var pick=bestCat(S.vals,open).c,pts=pick.fn(S.vals);
+    pl.scores[pick.id]=pts;
+    notice(pl.name+'가',pick.name+' '+pts+'점','등록했습니다');
+    resetDice();
+    if(!gameOver())S.turn=nextOpen(S.players,S.turn);
+    place();render();save();
+    aiAt=Date.now()+1500;
+    if(gameOver())setTimeout(openSheet,2700);
+  }
+  setInterval(aiStep,250);
+  $('mAi').addEventListener('click',function(){setMode('ai')});
+  $('btnAiStart').addEventListener('click',function(){
+    var n=$('aiName').value.trim()||'나';
+    try{localStorage.setItem('yachu-name',n)}catch(e){}
+    S.players=[{name:n,scores:{}},{name:'AI',scores:{},ai:true}];
+    S.turn=0;S.last=null;resetDice();S.started=true;
+    $('setup').hidden=true;place();render();save();
+    toast(n+' 차례예요');
+  });
+  try{$('aiName').value=localStorage.getItem('yachu-name')||''}catch(e){}
 
   // ===== 온라인: Firebase 실시간 DB의 rooms/<코드>/state 가 방의 공유 상태, live 가 굴리는 중의 주사위 위치 =====
   var FB={
