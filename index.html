@@ -227,6 +227,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     <div class="tray">
       <div id="tray"></div>
       <p class="status" id="status"></p>
+      <button class="sensor ask" id="btnSkip" hidden></button>
       <button class="sensor" id="sensor"></button>
     </div>
   </div>
@@ -400,6 +401,11 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   function P(){return S.players[S.turn]}
   function rolled(){return S.vals[0]>0}
   function cnt(p){return Object.keys(p.scores).length}
+  // 다음 차례: 아직 빈 칸이 남은 다음 사람 (차례를 넘겨받아 칸이 덜 찬 사람이 있을 수 있다)
+  function nextOpen(ps,t){
+    for(var j=1;j<=ps.length;j++){var k=(t+j)%ps.length;if(Object.keys(ps[k].scores||{}).length<ALL.length)return k}
+    return t;
+  }
   function gameOver(){return S.players.length>0&&S.players.every(function(p){return cnt(p)>=ALL.length})}
   function upperSum(p){return UPPER.reduce(function(a,c){return a+(p.scores[c.id]||0)},0)}
   function total(p){var t=ALL.reduce(function(a,c){return a+(p.scores[c.id]||0)},0);return t+(upperSum(p)>=BONUS_AT?BONUS:0)}
@@ -781,9 +787,9 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     var c=ALL.filter(function(x){return x.id===selected})[0];
     if(!c||!rolled()||gameOver()||!myTurn())return;
     P().scores[c.id]=c.fn(S.vals);forcePush=true;
-    S.last={who:P().name,cat:c.name,pts:P().scores[c.id],n:Date.now()};
+    S.last={who:P().name+'님이',what:c.name+' '+P().scores[c.id]+'점',tail:'등록했습니다',n:Date.now()};
     resetDice();
-    if(!gameOver())S.turn=(S.turn+1)%S.players.length;
+    if(!gameOver())S.turn=nextOpen(S.players,S.turn);
     place();render();save();
     if(gameOver()){renderSheet();$('scroll').scrollTop=0}
     else{closeSheet();toast(P().name+' 차례예요')}
@@ -903,7 +909,8 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     var st=snap.val();
     if(!st){if(online){leaveLocal();netMsg('방이 없어졌어요')}return}
     if(st.by===myUid&&st.seq===pushedSeq)return;   // 내가 방금 보낸 것
-    if(rolling)return;
+    if(rolling){cancelAnimationFrame(raf);rolling=false;holding=false;$('btnRoll').style.setProperty('--p','0%')}
+    lastAct=Date.now();absentAt=0;
     var wasMine=S.started&&myTurn();
     var nowIds=(st.players||[]).map(function(pl){return pl.id});
     var gone=S.players.filter(function(pl){return pl.id!==myUid&&nowIds.indexOf(pl.id)<0});
@@ -911,7 +918,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     lastSeq=st.seq||0;
     // 다른 사람이 점수를 등록하면 화면 가득 알려 준다 (방에 막 들어왔을 때의 지난 기록은 건너뛴다)
     var ln=st.last?st.last.n:0;
-    if(seenLast!==null&&ln&&ln!==seenLast&&st.by!==myUid)notice(st.last.who+'님이',st.last.cat+' '+st.last.pts+'점','등록했습니다');
+    if(seenLast!==null&&ln&&ln!==seenLast&&st.by!==myUid)notice(st.last.who,st.last.what,st.last.tail);
     seenLast=ln;
     S={started:!!st.started,
        players:(st.players||[]).map(function(pl){return {id:pl.id,name:pl.name,scores:pl.scores||{}}}),
@@ -932,6 +939,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   function onLive(snap){
     var v=snap.val();
     if(liveFirst){liveFirst=false;return}
+    lastAct=Date.now();
     if(!v||!S.started||rolling||myTurn())return;
     var t=v.t||[];
     if(!remoteRolling){remoteRolling=true;t.forEach(function(i){shade(i,false)});render()}
@@ -942,6 +950,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   function midGame(){return online&&S.started&&!gameOver()&&S.players.length>1}
   function requestLeave(){
     if(leavePending||!leaveRef)return;
+    if(!S.players.some(function(pl){return pl.id!==myUid&&pres[pl.id]})){leaveRoom();return}
     var me=S.players.filter(isMe)[0];
     leavePending=true;
     leaveRef.set({id:myUid,name:me?me.name:'플레이어',n:Date.now()}).catch(function(){leavePending=false});
@@ -952,7 +961,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     if(!v){$('ask').hidden=true;return}
     if(v.id===myUid){
       if(!leavePending)return;
-      var others=S.players.filter(function(pl){return pl.id!==myUid}),ok=v.ok||{};
+      var others=S.players.filter(function(pl){return pl.id!==myUid&&pres[pl.id]}),ok=v.ok||{};
       if(v.no){leavePending=false;leaveRef.remove();toast('상대가 퇴장을 거절했어요');return}
       if(others.every(function(pl){return ok[pl.id]})){leavePending=false;leaveRef.remove();leaveRoom()}
       return;
@@ -968,6 +977,48 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   $('askYes').addEventListener('click',function(){answer('ok')});
   $('askNo').addEventListener('click',function(){answer('no')});
 
+  // 차례 넘기기: 차례인 사람이 접속이 끊긴 지 20초, 또는 접속 중인데 90초 동안 아무 움직임이 없으면
+  // 다른 사람 화면에 버튼이 나타난다. 넘겨진 사람은 점수를 잃지 않고, 빈 칸은 나중에 채운다.
+  // 단, 빈 칸이 남은 사람이 그 사람뿐이면 남은 칸을 0점으로 채우고 게임을 끝낸다
+  var presRef=null,connRef=null,pres={},lastAct=0,absentAt=0,skipArmed=false,skipArmT=0;
+  function onConn(snap){
+    if(!snap.val()||!presRef)return;
+    var mine=presRef.child(myUid);
+    mine.onDisconnect().remove();mine.set(true);
+  }
+  function skipState(){
+    var b=$('btnSkip');
+    if(!online||!S.started||gameOver()||myTurn()||!P()){b.hidden=true;skipArmed=false;return}
+    var now=Date.now(),here=!!pres[P().id],show;
+    if(here){absentAt=0;show=now-lastAct>90000}
+    else{absentAt=absentAt||now;show=now-absentAt>20000}
+    b.hidden=!show;
+    if(show&&!skipArmed)b.textContent=P().name+'님 '+(here?'응답 없음':'접속 끊김')+' · 차례 넘기기';
+  }
+  setInterval(skipState,1000);
+  $('btnSkip').addEventListener('click',function(){
+    if(!online||!stateRef||myTurn())return;
+    if(!skipArmed){
+      skipArmed=true;$('btnSkip').textContent='한 번 더 누르면 차례를 넘겨요';
+      clearTimeout(skipArmT);skipArmT=setTimeout(function(){skipArmed=false;skipState()},3000);return;
+    }
+    skipArmed=false;clearTimeout(skipArmT);$('btnSkip').hidden=true;
+    var target=P().id,uid=myUid,me=S.players.filter(isMe)[0],myName=me?me.name:'플레이어',ids=ALL.map(function(c){return c.id});
+    stateRef.transaction(function(cur){
+      if(!cur||!cur.started||!cur.players)return cur;
+      var ps=cur.players,t=cur.turn||0;
+      if(!ps[t]||ps[t].id!==target)return;          // 그 사이 차례가 이미 바뀌었다
+      var open=function(pl){return ids.length-Object.keys(pl.scores||{}).length};
+      var others=ps.some(function(pl,i){return i!==t&&open(pl)>0});
+      if(others)cur.turn=nextOpen(ps,t);
+      else{ps[t].scores=ps[t].scores||{};ids.forEach(function(id){if(!(id in ps[t].scores))ps[t].scores[id]=0})}
+      cur.vals=[0,0,0,0,0];cur.held=null;cur.rollsLeft=3;
+      cur.last={who:ps[t].name+'님의',what:'차례를 넘겼어요',tail:myName+'님이 넘겼습니다',n:Date.now()};
+      cur.by=uid;cur.seq=(cur.seq||0)+1;
+      return cur;
+    }).then(function(res){if(res&&res.committed)toast('차례를 넘겼어요')}).catch(function(){toast('연결이 불안정해요. 다시 시도해 주세요')});
+  });
+
   function attach(code){
     room=code;online=true;lastSeq=0;pushedSeq=-1;liveFirst=true;seenLast=null;
     try{localStorage.setItem(ROOMKEY,code)}catch(e){}
@@ -976,9 +1027,16 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     stateRef.on('value',onState,function(e){netErr(e)});
     liveRef.on('value',onLive);
     leaveRef.on('value',onLeave);
+    lastAct=Date.now();absentAt=0;pres={};
+    presRef=db.ref('rooms/'+code+'/presence');connRef=db.ref('.info/connected');
+    presRef.on('value',function(sn){pres=sn.val()||{}});
+    connRef.on('value',onConn);
   }
   function leaveLocal(){
     if(stateRef)stateRef.off();if(liveRef)liveRef.off();if(leaveRef)leaveRef.off();
+    if(connRef)connRef.off('value',onConn);
+    if(presRef){presRef.off();presRef.child(myUid).onDisconnect().cancel();presRef.child(myUid).remove()}
+    presRef=connRef=null;pres={};$('btnSkip').hidden=true;
     stateRef=liveRef=leaveRef=null;leavePending=false;$('ask').hidden=true;online=false;room=null;remoteRolling=false;
     try{localStorage.removeItem(ROOMKEY)}catch(e){}
     document.body.classList.remove('spectate');
