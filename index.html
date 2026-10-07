@@ -125,26 +125,32 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .sheet-in{flex:1;min-height:0;width:100%;max-width:480px;margin:0 auto;display:flex;flex-direction:column}
 .sheet header{flex:none;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px 10px}
 .sheet h2{margin:0;font-family:var(--display);font-weight:400;font-size:24px}
-.total{font-family:var(--display);font-size:34px;color:var(--brass);font-variant-numeric:tabular-nums;line-height:1}
-.total small{font-family:var(--body);font-size:12px;color:var(--ivory-dim);margin-right:8px}
 .close{width:44px;height:44px;border-radius:50%;border:1.5px solid var(--line);font-size:20px}
-.sheet .turns{padding:0 16px 10px;border-bottom:1px solid var(--line)}
-.scroll{flex:1;min-height:0;overflow-y:auto;padding:12px 16px 20px;display:flex;flex-direction:column;gap:14px;-webkit-overflow-scrolling:touch}
+.scroll{flex:1;min-height:0;overflow-y:auto;padding:10px 16px 20px;display:flex;flex-direction:column;gap:14px;-webkit-overflow-scrolling:touch;border-top:1px solid var(--line)}
 .now{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ivory-dim)}
-.grp{display:flex;flex-direction:column}
-.grp h3{margin:0 0 4px;font-size:12px;font-weight:400;letter-spacing:.14em;color:var(--brass)}
-.row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 12px;padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);border-radius:8px;width:100%}
-.row .nm{font-size:16px}
-.row .rl{grid-column:1;font-size:12.5px;color:var(--ivory-dim)}
-.row .pt{grid-column:2;grid-row:1/3;min-width:52px;text-align:center;font-family:var(--display);font-size:22px;font-variant-numeric:tabular-nums}
-.row.done .pt{color:var(--brass)}
-.row.done .nm{color:var(--ivory-dim)}
-.row.open .pt{border:1.5px dashed var(--line);border-radius:10px;padding:4px 6px;color:var(--ivory)}
-.row.open.zero .pt{color:var(--ivory-dim)}
-.row.sel{background:rgba(224,170,69,.16)}
-.row.sel .pt{border:1.5px solid var(--brass);color:var(--brass)}
-.row.sum{border-bottom:0;color:var(--ivory-dim)}
-.row.sum .pt{font-size:16px}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;flex:none}
+.card{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;font-variant-numeric:tabular-nums}
+.card col.item{width:124px}
+.card col.pl{width:62px}
+.card th,.card td{height:42px;padding:0 6px;border-bottom:1px solid var(--line);border-left:1px solid var(--line);text-align:center}
+.card tr>:first-child{border-left:0;position:sticky;left:0;z-index:1;background:var(--felt-deep);text-align:left;padding-left:10px}
+.card tr:last-child>*{border-bottom:0}
+.card thead th{height:40px;font-weight:400;font-size:13.5px;color:var(--ivory-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:rgba(0,0,0,.28)}
+.card thead th:first-child{background:#07201b}
+.card thead th.cur{background:var(--brass);color:var(--ink)}
+.card tbody th{font-weight:400;line-height:1.15}
+.card .nm{display:block;font-size:14.5px;white-space:nowrap}
+.card .rl{display:block;font-size:10.5px;color:var(--ivory-dim);white-space:nowrap}
+.card td{font-family:var(--display);font-size:19px;color:var(--ivory)}
+.card td.cur{background:rgba(224,170,69,.1)}
+.card td small{font-family:var(--body);font-size:11px;color:var(--ivory-dim)}
+.card td.open{padding:3px}
+.card td.open button{width:100%;height:100%;border-radius:8px;border:1.5px dashed rgba(224,170,69,.7);font:inherit;color:var(--brass)}
+.card td.open.zero button{color:var(--ivory-dim);border-color:var(--line)}
+.card td.open.sel button{background:var(--brass);color:var(--ink);border-style:solid;border-color:var(--brass)}
+.card tr.auto td{background-color:rgba(0,0,0,.28)}
+.card tr.auto th:first-child{background:#07201b}
+.card tr.sumrow td{color:var(--brass);font-size:21px}
 .howto{margin:0;padding:12px 14px 12px 30px;border:1px solid var(--line);border-radius:12px;font-size:13.5px;line-height:1.65;color:var(--ivory-dim)}
 .howto b{color:var(--ivory);font-weight:400}
 .foot{flex:none;padding:10px 16px 14px;border-top:1px solid var(--line);display:flex;gap:10px}
@@ -204,10 +210,8 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   <div class="sheet-in">
     <header>
       <h2>야츄 점수판</h2>
-      <div class="total"><small>총점</small><span id="total">0</span></div>
       <button class="close" id="btnClose" aria-label="닫기">✕</button>
     </header>
-    <div class="turns" id="sheetTurns"></div>
     <div class="scroll" id="scroll"></div>
     <div class="foot">
       <button class="btn ghost" id="btnNew">새 게임</button>
@@ -240,20 +244,20 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   var num=function(n){return function(d){return d.filter(function(v){return v===n}).length*n}};
   var run=function(d,len){var u=counts(d),best=0,cur=0;for(var i=1;i<=6;i++){cur=u[i]?cur+1:0;if(cur>best)best=cur}return best>=len};
   var UPPER=[
-    {id:'n1',name:'에이스',rule:'1이 나온 주사위의 합',fn:num(1)},
-    {id:'n2',name:'듀스',rule:'2가 나온 주사위의 합',fn:num(2)},
-    {id:'n3',name:'트레이',rule:'3이 나온 주사위의 합',fn:num(3)},
-    {id:'n4',name:'포',rule:'4가 나온 주사위의 합',fn:num(4)},
-    {id:'n5',name:'파이브',rule:'5가 나온 주사위의 합',fn:num(5)},
-    {id:'n6',name:'식스',rule:'6이 나온 주사위의 합',fn:num(6)}
+    {id:'n1',name:'에이스',rule:'1의 눈 합',fn:num(1)},
+    {id:'n2',name:'듀얼',rule:'2의 눈 합',fn:num(2)},
+    {id:'n3',name:'트리플',rule:'3의 눈 합',fn:num(3)},
+    {id:'n4',name:'쿼드',rule:'4의 눈 합',fn:num(4)},
+    {id:'n5',name:'펜타',rule:'5의 눈 합',fn:num(5)},
+    {id:'n6',name:'헥사',rule:'6의 눈 합',fn:num(6)}
   ];
   var LOWER=[
-    {id:'choice',name:'초이스',rule:'조건 없음 · 주사위 5개의 합',fn:sum},
-    {id:'four',name:'포 오브 어 카인드',rule:'같은 눈 4개 이상 · 주사위 5개의 합',fn:function(d){return Math.max.apply(null,counts(d))>=4?sum(d):0}},
-    {id:'full',name:'풀 하우스',rule:'같은 눈 3개 + 같은 눈 2개 · 주사위 5개의 합',fn:function(d){var c=counts(d);return c.indexOf(3)>0&&c.indexOf(2)>0?sum(d):0}},
-    {id:'small',name:'스몰 스트레이트',rule:'이어지는 눈 4개 (예: 2-3-4-5) · 15점',fn:function(d){return run(d,4)?15:0}},
-    {id:'large',name:'라지 스트레이트',rule:'이어지는 눈 5개 (예: 1-2-3-4-5) · 30점',fn:function(d){return run(d,5)?30:0}},
-    {id:'yacht',name:'야츄',rule:'같은 눈 5개 · 50점',fn:function(d){return Math.max.apply(null,counts(d))===5?50:0}}
+    {id:'choice',name:'초이스',rule:'주사위 5개의 합',fn:sum},
+    {id:'four',name:'포커',rule:'같은 눈 4개 · 5개의 합',fn:function(d){return Math.max.apply(null,counts(d))>=4?sum(d):0}},
+    {id:'full',name:'풀하우스',rule:'3개+2개 · 5개의 합',fn:function(d){var c=counts(d);return c.indexOf(3)>0&&c.indexOf(2)>0?sum(d):0}},
+    {id:'small',name:'스몰스트레이트',rule:'연속 4개 · 무조건 15점',fn:function(d){return run(d,4)?15:0}},
+    {id:'large',name:'라지스트레이트',rule:'연속 5개 · 무조건 30점',fn:function(d){return run(d,5)?30:0}},
+    {id:'yacht',name:'야츄',rule:'같은 눈 5개 · 무조건 50점',fn:function(d){return Math.max.apply(null,counts(d))===5?50:0}}
   ];
   var ALL=UPPER.concat(LOWER), BONUS_AT=63, BONUS=35, KEY='yachu-v2', MAXP=8;
 
@@ -265,7 +269,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   var $=function(id){return document.getElementById(id)};
   var esc=function(t){return String(t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
   var PIPS='<i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>';
-  var tray=$('tray'),keep=$('keep'),dice=[],cubes=[],spins=[],rolling=false,rollTargets=[],rollStart=0,lastMotion=0,quietUntil=0,ticker=0,sensorOk=false,selected=null,newArmed=false,viewing=0;
+  var tray=$('tray'),keep=$('keep'),dice=[],cubes=[],spins=[],rolling=false,rollTargets=[],rollStart=0,lastMotion=0,quietUntil=0,ticker=0,sensorOk=false,selected=null,newArmed=false;
 
   // 정육면체: 마주 보는 면의 합은 7. 정면에 눈 v가 오도록 돌리는 각도와, 그때 위/오른쪽에 보이는 면
   var TILT='rotateX(-17deg) rotateY(-19deg) ';
@@ -313,10 +317,8 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     });
   }
 
-  function chips(cur,view){
-    return S.players.map(function(p,i){
-      return '<button class="chip'+(i===cur?' cur':'')+(i===view&&i!==cur?' view':'')+'" data-p="'+i+'">'+esc(p.name)+'<b>'+total(p)+'</b></button>';
-    }).join('');
+  function chips(cur){
+    return S.players.map(function(p,i){return '<span class="chip'+(i===cur?' cur':'')+'">'+esc(p.name)+'</span>'}).join('');
   }
 
   function render(){
@@ -329,7 +331,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     $('round').textContent=over?'게임 끝':Math.min(cnt(p)+1,ALL.length)+' / '+ALL.length+' 판';
     $('left').textContent='남은 흔들기 '+S.rollsLeft+'번';
     [].forEach.call($('lamps').children,function(l,i){l.classList.toggle('off',i>=S.rollsLeft)});
-    $('turns').innerHTML=chips(over?-1:S.turn,-1);
+    $('turns').innerHTML=chips(over?-1:S.turn);
     var cur=$('turns').querySelector('.cur');if(cur&&cur.scrollIntoView)cur.scrollIntoView({block:'nearest',inline:'nearest'});
     $('btnRoll').disabled=rolling||over||S.rollsLeft===0;
     $('btnHeart').disabled=rolling||over||S.rollsLeft===0||S.held.length===0;
@@ -442,55 +444,62 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   });
 
   // 점수판
-  function rowHTML(c,p,mine){
-    var has=c.id in p.scores,can=mine&&!has&&rolled(),pv=can?c.fn(S.vals):0;
-    var cls='row '+(has?'done':'open')+(can&&pv===0?' zero':'')+(can&&selected===c.id?' sel':'');
-    var pt=has?p.scores[c.id]:(can?pv:'–');
-    return '<button class="'+cls+'" data-id="'+c.id+'"'+(can?'':' disabled')+'><span class="nm">'+c.name+'</span><span class="rl">'+c.rule+'</span><span class="pt">'+pt+'</span></button>';
-  }
   function renderSheet(){
-    var over=gameOver(),p=S.players[viewing],mine=!over&&viewing===S.turn,up=upperSum(p),h='';
-    $('sheetTurns').innerHTML=chips(over?-1:S.turn,viewing);
-    if(rolled()&&!over){
-      h+='<div class="now"><span>지금 주사위</span>'+S.vals.map(function(v){return '<span class="face flat" data-f="'+v+'">'+PIPS+'</span>'}).join('')+'</div>';
+    var over=gameOver(),can=!over&&rolled(),ps=S.players,h='',w=over?winners():null;
+    var hi=function(i){return over?total(ps[i])===w.score:i===S.turn};
+    if(can){
+      h+='<div class="now"><span>'+esc(P().name)+'의 주사위</span>'+S.vals.map(function(v){return '<span class="face flat" data-f="'+v+'">'+PIPS+'</span>'}).join('')+'</div>';
     }
-    h+='<div class="grp"><h3>'+esc(p.name)+' · 숫자 칸</h3>'+UPPER.map(function(c){return rowHTML(c,p,mine)}).join('')+
-       '<div class="row sum"><span class="nm">숫자 칸 합계 '+up+' / '+BONUS_AT+'</span><span class="rl">'+BONUS_AT+'점 이상이면 보너스 +'+BONUS+'점</span><span class="pt">'+(up>=BONUS_AT?'+'+BONUS:'+0')+'</span></div></div>';
-    h+='<div class="grp"><h3>'+esc(p.name)+' · 조합 칸</h3>'+LOWER.map(function(c){return rowHTML(c,p,mine)}).join('')+'</div>';
+    var row=function(c){
+      return '<tr><th><span class="nm">'+c.name+'</span><span class="rl">'+c.rule+'</span></th>'+ps.map(function(p,i){
+        var cls=hi(i)?'cur':'';
+        if(c.id in p.scores)return '<td class="'+cls+'">'+p.scores[c.id]+'</td>';
+        if(can&&i===S.turn){var pv=c.fn(S.vals);return '<td class="open '+cls+(pv===0?' zero':'')+(selected===c.id?' sel':'')+'"><button data-id="'+c.id+'" aria-label="'+c.name+' '+pv+'점">'+pv+'</button></td>'}
+        return '<td class="'+cls+'"></td>';
+      }).join('')+'</tr>';
+    };
+    h+='<div class="tablewrap"><table class="card" style="min-width:'+(124+62*ps.length)+'px"><colgroup><col class="item">'+ps.map(function(){return '<col class="pl">'}).join('')+'</colgroup>';
+    h+='<thead><tr><th>항목</th>'+ps.map(function(p,i){return '<th class="'+(hi(i)?'cur':'')+'">'+esc(p.name)+'</th>'}).join('')+'</tr></thead><tbody>';
+    h+=UPPER.map(row).join('');
+    // 보너스: 위 6칸 합이 63점 이상이 되는 순간 +35, 6칸을 다 채우고도 못 넘으면 0
+    h+='<tr class="auto"><th><span class="nm">보너스</span><span class="rl">위 6칸 합 '+BONUS_AT+'점 이상 · 자동</span></th>'+ps.map(function(p,i){
+      var up=upperSum(p),full=UPPER.every(function(c){return c.id in p.scores});
+      return '<td class="'+(hi(i)?'cur':'')+'">'+(up>=BONUS_AT?'+'+BONUS:full?'0':'<small>'+up+'/'+BONUS_AT+'</small>')+'</td>';
+    }).join('')+'</tr>';
+    h+=LOWER.map(row).join('');
+    // 총점: 그 사람의 12칸이 모두 채워졌을 때만 나온다
+    h+='<tr class="auto sumrow"><th><span class="nm">총점</span><span class="rl">모든 칸을 채우면 공개</span></th>'+ps.map(function(p,i){
+      return '<td class="'+(hi(i)?'cur':'')+'">'+(cnt(p)>=ALL.length?total(p):'')+'</td>';
+    }).join('')+'</tr>';
+    h+='</tbody></table></div>';
     h+='<ol class="howto">'+
        '<li>돌아가며 한 사람씩, 한 판에 <b>최대 3번</b> 흔들 수 있어요.</li>'+
        '<li>흔든 뒤 남기고 싶은 주사위를 누르면 왼쪽 <b>고정</b> 칸으로 옮겨져요. 다시 누르면 풀려요.</li>'+
        '<li>다시 흔들면 고정하지 않은 주사위만 굴러요.</li>'+
        '<li><b>야수의심장</b>은 고정한 주사위를 모두 판으로 되돌려요. 그다음 흔들면 5개가 다 굴러요.</li>'+
-       '<li>자기 차례마다 빈 칸 하나에 점수를 꼭 기록해요. 조건이 안 맞으면 0점이에요.</li>'+
+       '<li>자기 차례마다 자기 줄의 빈 칸 하나에 점수를 꼭 기록해요. 조건이 안 맞으면 0점이에요.</li>'+
        '<li>모두가 12칸을 채우면 끝. 총점이 가장 높은 사람이 이겨요.</li></ol>';
     $('scroll').innerHTML=h;
-    $('total').textContent=total(p);
     var rec=$('btnRecord'),c=ALL.filter(function(x){return x.id===selected})[0];
-    if(over){var w=winners();rec.disabled=true;rec.textContent='1등 '+w.names.join(', ')+' · '+w.score+'점'}
-    else if(!mine){rec.disabled=true;rec.textContent='지금은 '+P().name+' 차례예요'}
-    else if(c){rec.disabled=false;rec.textContent=c.name+'에 '+c.fn(S.vals)+'점 기록'}
-    else{rec.disabled=true;rec.textContent=rolled()?'기록할 칸을 고르세요':'먼저 주사위를 흔드세요'}
+    if(over){rec.disabled=true;rec.textContent='1등 '+w.names.join(', ')+' · '+w.score+'점'}
+    else if(c&&can){rec.disabled=false;rec.textContent=c.name+'에 '+c.fn(S.vals)+'점 기록'}
+    else{rec.disabled=true;rec.textContent=can?'기록할 칸을 고르세요':P().name+' · 먼저 주사위를 흔드세요'}
     $('btnNew').textContent=newArmed?'한 번 더 누르면 초기화':'새 게임';
   }
-  function openSheet(){if(rolling||!S.started)return;selected=null;newArmed=false;viewing=S.turn;renderSheet();$('sheet').hidden=false;$('scroll').scrollTop=0}
+  function openSheet(){if(rolling||!S.started)return;selected=null;newArmed=false;renderSheet();$('sheet').hidden=false;$('scroll').scrollTop=0;var cur=$('scroll').querySelector('thead th.cur');if(cur&&cur.scrollIntoView)cur.scrollIntoView({block:'nearest',inline:'center'})}
   function closeSheet(){$('sheet').hidden=true;quietUntil=Date.now()+600}
   function resetDice(){S.vals=[0,0,0,0,0];S.held=[];S.rollsLeft=3;selected=null;for(var i=0;i<5;i++)setFace(i,0)}
 
   $('btnScore').addEventListener('click',openSheet);
   $('btnClose').addEventListener('click',closeSheet);
-  $('sheetTurns').addEventListener('click',function(e){
-    var b=e.target.closest('.chip');if(!b)return;
-    viewing=+b.dataset.p;selected=null;newArmed=false;renderSheet();$('scroll').scrollTop=0;
-  });
   $('scroll').addEventListener('click',function(e){
-    var r=e.target.closest('.row[data-id]');if(!r||r.disabled)return;
+    var r=e.target.closest('button[data-id]');if(!r)return;
     selected=selected===r.dataset.id?null:r.dataset.id;newArmed=false;
-    var y=$('scroll').scrollTop;renderSheet();$('scroll').scrollTop=y;
+    var y=$('scroll').scrollTop,w=$('scroll').querySelector('.tablewrap'),x=w?w.scrollLeft:0;renderSheet();$('scroll').scrollTop=y;w=$('scroll').querySelector('.tablewrap');if(w)w.scrollLeft=x;
   });
   $('btnRecord').addEventListener('click',function(){
     var c=ALL.filter(function(x){return x.id===selected})[0];
-    if(!c||!rolled()||viewing!==S.turn||gameOver())return;
+    if(!c||!rolled()||gameOver())return;
     P().scores[c.id]=c.fn(S.vals);
     resetDice();
     if(!gameOver())S.turn=(S.turn+1)%S.players.length;
