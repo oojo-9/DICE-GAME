@@ -313,7 +313,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 (function(){
   // 배포 도장. 커밋할 때 자동으로 바뀐다. 열려 있는 화면이 예전 버전이면 스스로 새로 받아 온다
   // (온라인에서 기기마다 버전이 다르면 알림 문구 같은 것이 어긋난다)
-  var BUILD='20261007-170352';
+  var BUILD='20261007-170733';
   function checkUpdate(){
     if(location.protocol==='file:')return;
     fetch(location.pathname+'?_='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){
@@ -817,7 +817,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   $('btnReset').addEventListener('click',function(){
     if(rolling)return;
     if(!resetArmed){
-      resetArmed=true;$('btnReset').textContent=!online?'한 번 더 누르면 삭제':midGame()?'한 번 더 누르면 퇴장 요청':'한 번 더 누르면 방 나가기';$('btnReset').classList.add('arm');
+      resetArmed=true;$('btnReset').textContent=!online?'한 번 더 누르면 삭제':midGame()?(leavePending?'한 번 더 누르면 요청 취소':'한 번 더 누르면 퇴장 요청'):'한 번 더 누르면 방 나가기';$('btnReset').classList.add('arm');
       resetT=setTimeout(disarmReset,3000);return;
     }
     disarmReset();
@@ -1002,26 +1002,32 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     diceIn(v.d,t);
   }
   // 게임 도중 퇴장: 요청을 올리고, 남은 사람이 모두 동의해야 나갈 수 있다
-  var leaveRef=null,leavePending=false,answered=0;
+  var leaveRef=null,leavePending=false,answered=0,leaveVal=null;
+  // 요청한 쪽: 접속 중인 모든 사람이 동의/거절을 고를 때까지 기다린 뒤에 결과를 낸다
+  function judgeLeave(){
+    var v=leaveVal;
+    if(!leavePending||!v||v.id!==myUid||!leaveRef)return;
+    var others=S.players.filter(function(pl){return pl.id!==myUid&&pres[pl.id]}),ok=v.ok||{},no=v.no||{};
+    if(!others.every(function(pl){return ok[pl.id]||no[pl.id]}))return;
+    leavePending=false;leaveRef.remove();
+    if(others.some(function(pl){return no[pl.id]}))toast('퇴장이 거절됐어요');
+    else leaveRoom();
+  }
   function midGame(){return online&&S.started&&!gameOver()&&S.players.length>1}
   function requestLeave(){
-    if(leavePending||!leaveRef)return;
+    if(!leaveRef)return;
+    if(leavePending){leavePending=false;leaveRef.remove();toast('퇴장 요청을 취소했어요');return}
     if(!S.players.some(function(pl){return pl.id!==myUid&&pres[pl.id]})){leaveRoom();return}
     var me=S.players.filter(isMe)[0];
     leavePending=true;
     leaveRef.set({id:myUid,name:me?me.name:'플레이어',n:Date.now()}).catch(function(){leavePending=false});
-    toast('퇴장을 요청했어요. 상대의 동의를 기다리는 중…');
+    toast('퇴장을 요청했어요. 모두의 선택을 기다리는 중… (다시 누르면 취소)');
   }
   function onLeave(snap){
     var v=snap.val();
+    leaveVal=v;
     if(!v){$('ask').hidden=true;return}
-    if(v.id===myUid){
-      if(!leavePending)return;
-      var others=S.players.filter(function(pl){return pl.id!==myUid&&pres[pl.id]}),ok=v.ok||{};
-      if(v.no){leavePending=false;leaveRef.remove();toast('상대가 퇴장을 거절했어요');return}
-      if(others.every(function(pl){return ok[pl.id]})){leavePending=false;leaveRef.remove();leaveRoom()}
-      return;
-    }
+    if(v.id===myUid){judgeLeave();return}
     if(answered===v.n||!S.players.some(isMe))return;
     $('askWho').textContent=v.name+'님이';
     $('ask').dataset.n=v.n;$('ask').hidden=false;
@@ -1085,7 +1091,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     leaveRef.on('value',onLeave);
     lastAct=Date.now();absentAt=0;pres={};
     presRef=db.ref('rooms/'+code+'/presence');connRef=db.ref('.info/connected');
-    presRef.on('value',function(sn){pres=sn.val()||{}});
+    presRef.on('value',function(sn){pres=sn.val()||{};judgeLeave()});
     connRef.on('value',onConn);
   }
   function leaveLocal(){
