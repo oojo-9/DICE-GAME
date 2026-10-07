@@ -324,7 +324,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 (function(){
   // 배포 도장. 커밋할 때 자동으로 바뀐다. 열려 있는 화면이 예전 버전이면 스스로 새로 받아 온다
   // (온라인에서 기기마다 버전이 다르면 알림 문구 같은 것이 어긋난다)
-  var BUILD='20261007-172703';
+  var BUILD='20261007-182039';
   function checkUpdate(){
     if(location.protocol==='file:')return;
     fetch(location.pathname+'?_='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){
@@ -352,7 +352,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   ];
   var LOWER=[
     {id:'choice',name:'초이스',rule:'주사위 5개의 합',fn:sum},
-    {id:'four',name:'포커',rule:'같은 눈 4개 · 5개의 합',fn:function(d){return Math.max.apply(null,counts(d))>=4?sum(d):0}},
+    {id:'four',name:'포커',rule:'같은 눈 4개 · 그 4개의 합',fn:function(d){var c=counts(d);for(var v=6;v>=1;v--)if(c[v]>=4)return v*4;return 0}},
     {id:'full',name:'풀하우스',rule:'3개+2개 · 5개의 합',fn:function(d){var c=counts(d);return c.indexOf(3)>0&&c.indexOf(2)>0?sum(d):0}},
     {id:'small',name:'스몰스트레이트',rule:'연속 4개 · 무조건 15점',fn:function(d){return run(d,4)?15:0}},
     {id:'large',name:'라지스트레이트',rule:'연속 5개 · 무조건 30점',fn:function(d){return run(d,5)?30:0}},
@@ -372,6 +372,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   function myTurn(){return online?(S.started&&!!P()&&P().id===myUid):!(S.started&&!!P()&&P().ai)}
   function save(){
     if(online){var go=forcePush||myTurn();forcePush=false;if(go)push();return true}
+    forcePush=false;
     try{localStorage.setItem(KEY,JSON.stringify(S));return true}catch(e){return false}
   }
 
@@ -515,7 +516,11 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
       av=list.length?list.map(function(x){return '<button data-id="'+x.c.id+'">'+x.c.name+'<b>'+x.v+'</b></button>'}).join(''):'점수가 나는 칸이 없어요';
     }else if(!over&&!rolling){av='흔들면 등록할 수 있는 항목이 여기에 나와요'}
     $('avail').innerHTML=av;$('avail').scrollLeft=0;
-    $('btnRoll').disabled=(rolling&&!holding)||over||S.rollsLeft===0||!mine;
+    $('btnRoll').disabled=!over&&((rolling&&!holding)||S.rollsLeft===0||!mine);
+    if($('btnRoll').dataset.over!==String(over)){
+      $('btnRoll').dataset.over=String(over);
+      $('btnRoll').innerHTML=over?'다시 시작<small>같은 멤버로 한 판 더</small>':'흔들기<small>길게 누를수록 세게 굴러요</small>';
+    }
     $('btnHeart').disabled=rolling||over||S.rollsLeft===0||S.held.length===0||!mine;
     $('btnScore').classList.toggle('nudge',mine&&!over&&rolled()&&S.rollsLeft===0);
     var who=(online&&mine?'<b>내 차례</b> · ':'<b>'+esc(p.name)+'</b> 차례 · '),msg;
@@ -761,8 +766,20 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   if(needAsk){document.addEventListener('click',askSensor)}else if(typeof DeviceMotionEvent!=='undefined'){listen()}
   sensorUI();
 
+  // 같은 사람들로 점수만 지우고 새 판. 온라인이면 방 전체가 같이 새로 시작한다
+  function restartSame(){
+    var who=online?S.players.filter(isMe)[0]:null;
+    S.players.forEach(function(pl){pl.scores={}});
+    S.turn=0;S.gid=Date.now();
+    S.last=who?{who:who.name+'님이',what:'새 게임 시작',tail:'같은 멤버로 한 판 더!',n:Date.now()}:null;
+    if(S.last)seenLast=S.last.n;
+    resetDice();place();forcePush=true;save();closeSheet();render();
+    aiAt=Date.now()+1200;
+    toast('새 게임을 시작했어요 · '+P().name+' 차례');
+  }
   $('btnRoll').addEventListener('pointerdown',function(e){
     if(e.button)return;
+    if(S.started&&gameOver()){if(!rolling)restartSame();return}
     lastMotion=0;holding=true;holdStart=Date.now();lastKick=0;
     if(!beginRoll(false))holding=false;
   });
@@ -822,7 +839,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     if(over){rec.disabled=true;rec.textContent='1등 '+w.names.join(', ')+' · '+w.score+'점'}
     else if(c&&can){rec.disabled=false;rec.textContent=c.name+'에 '+c.fn(S.vals)+'점 기록'}
     else{rec.disabled=true;rec.textContent=can?'기록할 칸을 고르세요':!myTurn()?'지금은 '+P().name+' 차례예요':P().name+' · 먼저 주사위를 흔드세요'}
-    $('btnNew').textContent=newArmed?'한 번 더 누르면 초기화':'새 게임';
+    $('btnNew').textContent=newArmed?'한 번 더 누르면 초기화':over?'다시 시작':'새 게임';
   }
   function openSheet(){if(rolling||!S.started)return;selected=null;newArmed=false;renderSheet();$('sheet').hidden=false;$('scroll').scrollTop=0;var cur=$('scroll').querySelector('thead th.cur');if(cur&&cur.scrollIntoView)cur.scrollIntoView({block:'nearest',inline:'center'})}
   function closeSheet(){$('sheet').hidden=true;quietUntil=Date.now()+600}
@@ -894,11 +911,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     var any=S.players.some(function(p){return cnt(p)>0});
     if(!newArmed&&any&&!gameOver()){newArmed=true;renderSheet();return}
     newArmed=false;
-    if(online){
-      // 온라인: 같은 방, 같은 사람들로 점수만 지우고 다시 시작
-      S.players.forEach(function(p){p.scores={}});S.turn=0;S.last=null;S.gid=Date.now();resetDice();place();
-      forcePush=true;save();closeSheet();render();toast('새 게임을 시작했어요');return;
-    }
+    if(online||gameOver()){restartSame();return}   // 온라인이거나 게임이 끝났으면 같은 멤버로 다시
     S.started=false;save();closeSheet();showSetup();
   });
 
