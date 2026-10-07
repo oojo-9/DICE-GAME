@@ -164,6 +164,11 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .foot .btn{flex:1;font-size:18px}
 .foot .btn.ghost{flex:none;padding:0 16px;border:1.5px solid var(--line);font-family:var(--body);font-size:14px;letter-spacing:0}
 
+.notice{position:fixed;inset:0;z-index:25;display:grid;place-items:center;padding:24px;background:rgba(10,11,14,.86);text-align:center}
+.notice div{display:flex;flex-direction:column;gap:10px;max-width:320px}
+.notice b{font-weight:400;font-size:20px;color:var(--ivory)}
+.notice strong{font-family:var(--display);font-weight:400;font-size:40px;line-height:1.15;color:var(--brass);word-break:keep-all}
+.notice span{font-size:17px;color:var(--ivory-dim)}
 .setup{z-index:20;overflow-y:auto}
 .setup-in{width:100%;max-width:420px;margin:auto;padding:28px 20px;display:flex;flex-direction:column;gap:18px}
 .setup h1{margin:0;font-family:var(--display);font-weight:400;font-size:64px;line-height:1;text-align:center}
@@ -234,6 +239,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 </div>
 
 <div class="toast" id="toast" role="status"></div>
+<div class="notice" id="notice" role="status" hidden><div><b id="noticeWho"></b><strong id="noticeWhat"></strong><span>등록했습니다</span></div></div>
 
 <div class="sheet" id="sheet" hidden>
   <div class="sheet-in">
@@ -553,37 +559,46 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
         if(rel<0){if(rel<-120)clack(-rel/1700);rel*=.95;v1.x+=nx*rel;v1.y+=ny*rel;v2.x-=nx*rel;v2.y-=ny*rel}
       }
     }
-    var k=2/(d*.72);
+    var k=2/(d*.72),SLOW=320,lean=0;
     rollTargets.forEach(function(i){
       var q=pos[i],v=vel[i],sp=Math.hypot(v.x,v.y);
       q.x=Math.min(b.w,Math.max(0,q.x));q.y=Math.min(b.h,Math.max(0,q.y));
       // 굴러가는 방향의 회전에, 튈 때마다 바뀌는 무작위 축의 회전을 섞는다 (실제 주사위가 통통 튀며 도는 것처럼)
+      // 느려질수록 덜 구르고(grip), 가까운 면으로 서서히 눕는다. 그래서 멈춘 뒤에 눈이 바뀌어 보이는 일이 없다
+      var grip=holding?1:Math.min(1,sp/SLOW);
       if(sp>1){
         if(now>nextTumble[i]){newTumble(i);nextTumble[i]=now+90+Math.random()*130}
         var tb=tumble[i],ax=-v.y/sp*.5+tb[0],ay=v.x/sp*.5+tb[1],az=tb[2],al=Math.hypot(ax,ay,az)||1;
-        R[i]=mmul(rotAxis(ax/al,ay/al,az/al,sp*k*dt),R[i]);
+        R[i]=mmul(rotAxis(ax/al,ay/al,az/al,sp*k*dt*grip*grip),R[i]);
+      }
+      if(grip>=1)lean=9;
+      else{
+        var T=snap(R[i]),m=R[i],E=mmul(T,[[m[0][0],m[1][0],m[2][0]],[m[0][1],m[1][1],m[2][1]],[m[0][2],m[1][2],m[2][2]]]);
+        var ex=E[2][1]-E[1][2],ey=E[0][2]-E[2][0],ez=E[1][0]-E[0][1],sn=Math.hypot(ex,ey,ez);
+        if(sn>1e-4){
+          var ang=Math.atan2(sn/2,(E[0][0]+E[1][1]+E[2][2]-1)/2),part=Math.min(1,dt*16*(1-grip));
+          R[i]=mmul(rotAxis(ex/sn,ey/sn,ez/sn,ang*part),R[i]);
+          lean=Math.max(lean,ang*(1-part));
+        }
       }
       dice[i].style.left=q.x.toFixed(1)+'px';dice[i].style.top=q.y.toFixed(1)+'px';
       cubes[i].style.transform=TILT+m3d(R[i]);
       fast=Math.max(fast,sp);
     });
     // 누르거나 흔드는 동안은 계속 구르고, 멈춘 뒤 충분히 느려지면 눈이 정해진다
-    if(!holding&&((now-rollStart>700&&now-lastMotion>300&&fast<30)||now-Math.max(releasedAt,lastMotion)>5000))endRoll();
+    if(!holding&&((now-rollStart>700&&now-lastMotion>300&&fast<30&&lean<.026)||now-Math.max(releasedAt,lastMotion)>5000))endRoll();
     else raf=requestAnimationFrame(step);
   }
 
   function endRoll(){
     cancelAnimationFrame(raf);
     rollTargets.forEach(function(i){
-      // 멈춘 순간 화면 쪽을 향한 면이 결과. 가장 가까운 면으로 살짝 눕히기만 한다
-      var cube=cubes[i],from=R[i],to=snap(from);
+      // 이미 반듯하게 누워서 멈춘 상태. 더 돌리지 않고 보이는 그대로 눈을 센다
+      var to=snap(R[i]);
       vel[i]={x:0,y:0};R[i]=to;
       S.vals[i]=faceToward(to,2,1);
-      cube.style.transform=TILT+m3d(to);
-      if(cube.animate){
-        var a=cube.animate([{transform:TILT+m3d(from)},{transform:TILT+m3d(to)}],{duration:240,easing:'ease-out'});
-        a.onfinish=function(){shade(i,true)};
-      }else shade(i,true);
+      cubes[i].style.transform=TILT+m3d(to);
+      shade(i,true);
     });
     S.rollsLeft--;rolling=false;holding=false;quietUntil=Date.now()+1000;
     $('btnRoll').style.setProperty('--p','0%');
@@ -757,6 +772,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     var c=ALL.filter(function(x){return x.id===selected})[0];
     if(!c||!rolled()||gameOver()||!myTurn())return;
     P().scores[c.id]=c.fn(S.vals);forcePush=true;
+    S.last={who:P().name,cat:c.name,pts:P().scores[c.id],n:Date.now()};
     resetDice();
     if(!gameOver())S.turn=(S.turn+1)%S.players.length;
     place();render();save();
@@ -769,7 +785,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     newArmed=false;
     if(online){
       // 온라인: 같은 방, 같은 사람들로 점수만 지우고 다시 시작
-      S.players.forEach(function(p){p.scores={}});S.turn=0;resetDice();place();
+      S.players.forEach(function(p){p.scores={}});S.turn=0;S.last=null;resetDice();place();
       forcePush=true;save();closeSheet();render();toast('새 게임을 시작했어요');return;
     }
     S.started=false;save();closeSheet();showSetup();
@@ -861,10 +877,18 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   function push(){
     if(!stateRef)return;
     lastSeq++;pushedSeq=lastSeq;
-    stateRef.set({started:S.started,players:S.players,turn:S.turn,vals:S.vals,held:S.held,rollsLeft:S.rollsLeft,dice:diceOut(),by:myUid,seq:lastSeq})
+    stateRef.set({started:S.started,players:S.players,turn:S.turn,vals:S.vals,held:S.held,rollsLeft:S.rollsLeft,dice:diceOut(),last:S.last||null,by:myUid,seq:lastSeq})
       .catch(function(){toast('연결이 불안정해요. 다시 시도해 주세요')});
   }
   function isMe(pl){return pl.id===myUid}
+  var seenLast=null,noticeT=0;
+  function notice(l){
+    $('noticeWho').textContent=l.who+'님이';
+    $('noticeWhat').textContent=l.cat+' '+l.pts+'점';
+    $('notice').hidden=false;
+    clearTimeout(noticeT);noticeT=setTimeout(function(){$('notice').hidden=true},2600);
+  }
+  $('notice').addEventListener('click',function(){$('notice').hidden=true});
   function onState(snap){
     var st=snap.val();
     if(!st){if(online){leaveLocal();netMsg('방이 없어졌어요')}return}
@@ -872,9 +896,13 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     if(rolling)return;
     var wasMine=S.started&&myTurn();
     lastSeq=st.seq||0;
+    // 다른 사람이 점수를 등록하면 화면 가득 알려 준다 (방에 막 들어왔을 때의 지난 기록은 건너뛴다)
+    var ln=st.last?st.last.n:0;
+    if(seenLast!==null&&ln&&ln!==seenLast&&st.by!==myUid)notice(st.last);
+    seenLast=ln;
     S={started:!!st.started,
        players:(st.players||[]).map(function(pl){return {id:pl.id,name:pl.name,scores:pl.scores||{}}}),
-       turn:st.turn||0,vals:st.vals||[0,0,0,0,0],held:st.held||[],rollsLeft:st.rollsLeft==null?3:st.rollsLeft,setup:S.setup};
+       turn:st.turn||0,vals:st.vals||[0,0,0,0,0],held:st.held||[],rollsLeft:st.rollsLeft==null?3:st.rollsLeft,last:st.last||null,setup:S.setup};
     if(S.turn>=S.players.length)S.turn=0;
     remoteRolling=false;
     if(!S.players.some(isMe)){leaveLocal();netMsg('방에서 나왔어요');return}
@@ -897,7 +925,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     diceIn(v.d,t);
   }
   function attach(code){
-    room=code;online=true;lastSeq=0;pushedSeq=-1;liveFirst=true;
+    room=code;online=true;lastSeq=0;pushedSeq=-1;liveFirst=true;seenLast=null;
     try{localStorage.setItem(ROOMKEY,code)}catch(e){}
     stateRef=db.ref('rooms/'+code+'/state');liveRef=db.ref('rooms/'+code+'/live');
     stateRef.on('value',onState,function(e){netErr(e)});
@@ -975,7 +1003,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
       }).then(function(res){
         var st=res.snapshot.val();
         if(st&&(st.players||[]).some(isMe)){netMsg('');attach(code)}
-        else netMsg(st&&st.started?'이미 시작된 방이에요':'방이 가득 찼어요');
+        else netMsg(st&&st.started?'방 '+code+'은 이미 게임 중이에요 ('+(st.players||[]).map(function(pl){return pl.name}).join(', ')+'). 코드를 다시 확인해 주세요':'방이 가득 찼어요');
       });
     }).catch(netErr);
   });
