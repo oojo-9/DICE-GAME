@@ -175,6 +175,11 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .askbtns .yes{background:var(--brass);color:var(--ink)}
 .warn{margin:0;padding:12px 14px;border-radius:12px;border:1.5px solid var(--heart);background:rgba(214,54,46,.16);color:var(--ivory);font-size:14.5px;line-height:1.55;text-align:center;word-break:keep-all}
 .warn b{color:var(--brass);font-weight:400}
+.party{position:fixed;inset:0;z-index:40;pointer-events:none;display:grid;place-items:center;background:rgba(10,11,14,.6)}
+.party canvas{position:absolute;inset:0;width:100%;height:100%}
+.party strong{position:relative;font-family:var(--display);font-weight:400;font-size:min(26vw,120px);line-height:1;color:var(--brass);
+  text-shadow:0 0 28px rgba(224,170,69,.75),0 5px 0 #7a5417;animation:yachu 3.4s cubic-bezier(.2,1.4,.3,1) both}
+@keyframes yachu{0%{transform:scale(.2) rotate(-12deg);opacity:0}12%{transform:scale(1.15) rotate(4deg);opacity:1}22%{transform:scale(1) rotate(-3deg)}85%{transform:scale(1.04) rotate(-3deg);opacity:1}100%{transform:scale(1.3) rotate(-3deg);opacity:0}}
 .setup{z-index:20;overflow-y:auto}
 .setup-in{width:100%;max-width:420px;margin:auto;padding:28px 20px;display:flex;flex-direction:column;gap:18px}
 .setup h1{margin:0;font-family:var(--display);font-weight:400;font-size:64px;line-height:1;text-align:center}
@@ -246,6 +251,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 </div>
 
 <div class="toast" id="toast" role="status"></div>
+<div class="party" id="party" role="status" hidden><canvas id="fx"></canvas><strong>야츄~!</strong></div>
 <div class="notice" id="notice" role="status" hidden><div><b id="noticeWho"></b><strong id="noticeWhat"></strong><span id="noticeTail"></span></div></div>
 <div class="notice" id="ask" role="alertdialog" aria-labelledby="askWhat" hidden><div><b id="askWho"></b><strong id="askWhat">퇴장을 요청합니다</strong><span>동의하면 이 사람은 방에서 나가고, 남은 사람끼리 이어서 해요</span>
   <div class="askbtns"><button class="no" id="askNo">거절</button><button class="yes" id="askYes">동의</button></div></div></div>
@@ -307,7 +313,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 (function(){
   // 배포 도장. 커밋할 때 자동으로 바뀐다. 열려 있는 화면이 예전 버전이면 스스로 새로 받아 온다
   // (온라인에서 기기마다 버전이 다르면 알림 문구 같은 것이 어긋난다)
-  var BUILD='20261007-165811';
+  var BUILD='20261007-170352';
   function checkUpdate(){
     if(location.protocol==='file:')return;
     fetch(location.pathname+'?_='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){
@@ -506,6 +512,37 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     $('status').innerHTML=msg;
   }
 
+  // 야츄(같은 눈 5개)가 나오면 폭죽과 함께 크게 알린다
+  var partyRaf=0;
+  function isYacht(){return S.vals[0]>0&&S.vals.every(function(v){return v===S.vals[0]})}
+  function celebrate(){
+    var box=$('party'),cv=$('fx'),g=cv.getContext('2d'),dpr=Math.min(2,window.devicePixelRatio||1);
+    var W=window.innerWidth,H=window.innerHeight,parts=[],t0=performance.now(),last=t0,nextBurst=0;
+    var cols=['#e0aa45','#d6362e','#f4ecd8','#6fd3ff','#9be37a','#ff8ad0'];
+    cancelAnimationFrame(partyRaf);
+    box.hidden=true;void box.offsetWidth;box.hidden=false;   // 글자 애니메이션을 처음부터 다시
+    cv.width=W*dpr;cv.height=H*dpr;
+    if(navigator.vibrate){try{navigator.vibrate([80,60,80,60,200])}catch(e){}}
+    function burst(){
+      var x=W*(.15+Math.random()*.7),y=H*(.12+Math.random()*.5),c=cols[Math.floor(Math.random()*cols.length)],n=46;
+      for(var i=0;i<n;i++){var a=Math.PI*2*i/n+Math.random()*.2,sp=120+Math.random()*260;parts.push({x:x,y:y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:1,c:c})}
+      clack(.7);
+    }
+    (function frame(t){
+      var dt=Math.min(.04,(t-last)/1000);last=t;
+      var el=t-t0;
+      if(el<2500&&el>=nextBurst){burst();nextBurst=el+260}
+      g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);
+      parts=parts.filter(function(q){return q.life>0});
+      parts.forEach(function(q){
+        q.vy+=260*dt;q.vx*=.985;q.vy*=.985;q.x+=q.vx*dt;q.y+=q.vy*dt;q.life-=dt*.8;
+        g.globalAlpha=Math.max(0,q.life);g.fillStyle=q.c;g.beginPath();g.arc(q.x,q.y,2.6,0,6.3);g.fill();
+      });
+      g.globalAlpha=1;
+      if(el<3400)partyRaf=requestAnimationFrame(frame);else box.hidden=true;
+    })(t0);
+  }
+
   var toastT=0;
   function toast(t){var el=$('toast');el.textContent=t;el.classList.add('on');clearTimeout(toastT);toastT=setTimeout(function(){el.classList.remove('on')},1800)}
 
@@ -631,6 +668,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
       shade(i,true);
     });
     S.rollsLeft--;rolling=false;holding=false;quietUntil=Date.now()+1000;
+    if(isYacht()){S.yn=seenY=Date.now();celebrate()}
     $('btnRoll').style.setProperty('--p','0%');
     if(navigator.vibrate){try{navigator.vibrate(40)}catch(e){}}
     render();save();
@@ -802,7 +840,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     var c=ALL.filter(function(x){return x.id===selected})[0];
     if(!c||!rolled()||gameOver()||!myTurn())return;
     P().scores[c.id]=c.fn(S.vals);forcePush=true;
-    S.last={who:P().name+'님이',what:c.name+' '+P().scores[c.id]+'점',tail:'등록했습니다',n:Date.now()};
+    S.last={who:P().name+'님이',what:c.name+' '+P().scores[c.id]+'점',tail:'등록했습니다',n:Date.now()};seenLast=S.last.n;   // 내가 등록한 것은 나에게 다시 알리지 않는다
     resetDice();
     if(!gameOver())S.turn=nextOpen(S.players,S.turn);
     place();render();save();
@@ -907,11 +945,11 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   function push(){
     if(!stateRef)return;
     lastSeq++;pushedSeq=lastSeq;
-    stateRef.set({started:S.started,players:S.players,turn:S.turn,vals:S.vals,held:S.held,rollsLeft:S.rollsLeft,dice:diceOut(),last:S.last||null,by:myUid,seq:lastSeq})
+    stateRef.set({started:S.started,players:S.players,turn:S.turn,vals:S.vals,held:S.held,rollsLeft:S.rollsLeft,dice:diceOut(),last:S.last||null,yn:S.yn||null,by:myUid,seq:lastSeq})
       .catch(function(){toast('연결이 불안정해요. 다시 시도해 주세요')});
   }
   function isMe(pl){return pl.id===myUid}
-  var seenLast=null,noticeT=0;
+  var seenLast=null,seenY=null,noticeT=0;
   function notice(who,what,tail){
     $('noticeWho').textContent=who;
     $('noticeWhat').textContent=what;
@@ -935,9 +973,12 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     var ln=st.last?st.last.n:0;
     if(seenLast!==null&&ln&&ln!==seenLast&&st.by!==myUid)notice(st.last.what?st.last.who:st.last.who+'님이',st.last.what||(st.last.cat+' '+st.last.pts+'점'),st.last.what?st.last.tail:'등록했습니다');
     seenLast=ln;
+    var yn=st.yn||0;
+    if(seenY!==null&&yn&&yn!==seenY&&st.by!==myUid)celebrate();
+    seenY=yn;
     S={started:!!st.started,
        players:(st.players||[]).map(function(pl){return {id:pl.id,name:pl.name,scores:pl.scores||{}}}),
-       turn:st.turn||0,vals:st.vals||[0,0,0,0,0],held:st.held||[],rollsLeft:st.rollsLeft==null?3:st.rollsLeft,last:st.last||null,setup:S.setup};
+       turn:st.turn||0,vals:st.vals||[0,0,0,0,0],held:st.held||[],rollsLeft:st.rollsLeft==null?3:st.rollsLeft,last:st.last||null,yn:st.yn||null,setup:S.setup};
     if(S.turn>=S.players.length)S.turn=0;
     remoteRolling=false;
     if(!S.players.some(isMe)){leaveLocal();netMsg('방에서 나왔어요');return}
@@ -1035,7 +1076,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   });
 
   function attach(code){
-    room=code;online=true;lastSeq=0;pushedSeq=-1;liveFirst=true;seenLast=null;
+    room=code;online=true;lastSeq=0;pushedSeq=-1;liveFirst=true;seenLast=null;seenY=null;
     try{localStorage.setItem(ROOMKEY,code)}catch(e){}
     stateRef=db.ref('rooms/'+code+'/state');liveRef=db.ref('rooms/'+code+'/live');
     leaveRef=db.ref('rooms/'+code+'/leave');leavePending=false;answered=0;
