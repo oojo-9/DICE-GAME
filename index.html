@@ -287,22 +287,49 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   var $=function(id){return document.getElementById(id)};
   var esc=function(t){return String(t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
   var PIPS='<i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>';
-  var tray=$('tray'),keep=$('keep'),dice=[],cubes=[],pos=[],vel=[],rot=[],holding=false,holdStart=0,lastKick=0,releasedAt=0,raf=0,lastT=0,rolling=false,rollTargets=[],rollStart=0,lastMotion=0,quietUntil=0,sensorOk=false,selected=null,newArmed=false;
+  var tray=$('tray'),keep=$('keep'),dice=[],cubes=[],pos=[],vel=[],holding=false,holdStart=0,lastKick=0,releasedAt=0,raf=0,lastT=0,rolling=false,rollTargets=[],rollStart=0,lastMotion=0,quietUntil=0,sensorOk=false,selected=null,newArmed=false;
 
   // 정육면체: 마주 보는 면의 합은 7. 정면에 눈 v가 오도록 돌리는 각도와, 그때 위/오른쪽에 보이는 면
   var TILT='rotateX(-17deg) rotateY(-19deg) ';
+  // 주사위의 자세는 3x3 회전 행렬(R[i])로 들고 있다. 나온 눈은 무작위로 뽑지 않고,
+  // 주사위가 멈췄을 때 실제로 화면 쪽을 향한 면이 그대로 결과가 된다
   var ORI={1:[0,0],2:[-90,0],3:[0,-90],4:[0,90],5:[90,0],6:[0,180]};
-  var SIDES={1:[2,3],2:[6,3],3:[2,6],4:[2,1],5:[1,3],6:[2,4]};
-  function tf(v,ex,ey){var o=ORI[v||1];return TILT+'rotateX('+(o[0]+(ex||0))+'deg) rotateY('+(o[1]+(ey||0))+'deg)'}
-  function shade(i,v){
-    var s=v?SIDES[v]:null;
+  var NORM={1:[0,0,1],6:[0,0,-1],3:[1,0,0],4:[-1,0,0],2:[0,-1,0],5:[0,1,0]};
+  var R=[];
+  function mmul(a,b){var r=[[0,0,0],[0,0,0],[0,0,0]];for(var i=0;i<3;i++)for(var j=0;j<3;j++)r[i][j]=a[i][0]*b[0][j]+a[i][1]*b[1][j]+a[i][2]*b[2][j];return r}
+  function rotX(deg){var t=deg*Math.PI/180,c=Math.cos(t),s=Math.sin(t);return [[1,0,0],[0,c,-s],[0,s,c]]}
+  function rotY(deg){var t=deg*Math.PI/180,c=Math.cos(t),s=Math.sin(t);return [[c,0,s],[0,1,0],[-s,0,c]]}
+  // 단위 축 (x,y,z)을 중심으로 ang 라디안 회전
+  function rotAxis(x,y,z,ang){var c=Math.cos(ang),s=Math.sin(ang),t=1-c;return [[t*x*x+c,t*x*y-s*z,t*x*z+s*y],[t*x*y+s*z,t*y*y+c,t*y*z-s*x],[t*x*z-s*y,t*y*z+s*x,t*z*z+c]]}
+  // 주사위가 튈 때마다 바뀌는 무작위 회전축 (구 위에서 고르게 뽑는다)
+  var tumble=[],nextTumble=[];
+  function newTumble(i){var z=Math.random()*2-1,a=Math.random()*Math.PI*2,r=Math.sqrt(1-z*z);tumble[i]=[r*Math.cos(a),r*Math.sin(a),z]}
+  function m3d(m){return 'matrix3d('+[m[0][0],m[1][0],m[2][0],0,m[0][1],m[1][1],m[2][1],0,m[0][2],m[1][2],m[2][2],0,0,0,0,1].map(function(x){return (+x).toFixed(4)}).join(',')+')'}
+  // 지금 자세에서 dir 방향을 향한 면의 눈
+  function faceToward(m,row,sign){
+    var best=1,bv=-9;
+    for(var f=1;f<=6;f++){var n=NORM[f],v=(m[row][0]*n[0]+m[row][1]*n[1]+m[row][2]*n[2])*sign;if(v>bv){bv=v;best=f}}
+    return best;
+  }
+  // 가장 가까운 '반듯하게 놓인' 자세: 주사위가 가까운 면으로 툭 눕는 것
+  function snap(m){
+    var r=[[0,0,0],[0,0,0],[0,0,0]],ur={},uc={};
+    for(var k=0;k<3;k++){
+      var bi=-1,bj=-1,bv=-1;
+      for(var i=0;i<3;i++)for(var j=0;j<3;j++)if(!ur[i]&&!uc[j]&&Math.abs(m[i][j])>bv){bv=Math.abs(m[i][j]);bi=i;bj=j}
+      r[bi][bj]=m[bi][bj]<0?-1:1;ur[bi]=uc[bj]=1;
+    }
+    return r;
+  }
+  function shade(i,on){
+    var m=R[i],front=faceToward(m,2,1),right=faceToward(m,0,1);
     [].forEach.call(cubes[i].children,function(f){
       var n=+f.dataset.f;
-      f.classList.toggle('side',!!s&&n!==v);
-      f.style.filter=!s||n===v?'':n===s[1]?'brightness(.66)':'brightness(.82)';
+      f.classList.toggle('side',on&&n!==front);
+      f.style.filter=!on||n===front?'':n===right?'brightness(.66)':'brightness(.82)';
     });
   }
-  function setFace(i,v){cubes[i].style.transform=tf(v);shade(i,v||1)}
+  function setFace(i,v){var o=ORI[v||1];R[i]=mmul(rotX(o[0]),rotY(o[1]));cubes[i].style.transform=TILT+m3d(R[i]);shade(i,true)}
 
   for(var i=0;i<5;i++){(function(i){
     var el=document.createElement('div');el.className='die';el.setAttribute('role','button');el.tabIndex=0;
@@ -418,9 +445,8 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     if(!rollTargets.length){if(!quiet)toast('굴릴 주사위가 없어요. 고정을 풀거나 야수의심장을 누르세요');return false}
     rolling=true;rollStart=releasedAt=Date.now();
     rollTargets.forEach(function(i){
-      var o=ORI[S.vals[i]||1];
-      dice[i].classList.remove('blank');shade(i,0);
-      vel[i]={x:0,y:0};rot[i]={x:o[0],y:o[1]};
+      dice[i].classList.remove('blank');shade(i,false);
+      vel[i]={x:0,y:0};newTumble(i);nextTumble[i]=0;
     });
     render();
     lastT=performance.now();raf=requestAnimationFrame(step);
@@ -482,14 +508,19 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
         if(rel<0){if(rel<-120)clack(-rel/1700);rel*=.95;v1.x+=nx*rel;v1.y+=ny*rel;v2.x-=nx*rel;v2.y-=ny*rel}
       }
     }
-    var k=360/(Math.PI*d*.72);
+    var k=2/(d*.72);
     rollTargets.forEach(function(i){
-      var q=pos[i],v=vel[i],r=rot[i];
+      var q=pos[i],v=vel[i],sp=Math.hypot(v.x,v.y);
       q.x=Math.min(b.w,Math.max(0,q.x));q.y=Math.min(b.h,Math.max(0,q.y));
-      r.x-=v.y*k*dt;r.y+=v.x*k*dt;
+      // 굴러가는 방향의 회전에, 튈 때마다 바뀌는 무작위 축의 회전을 섞는다 (실제 주사위가 통통 튀며 도는 것처럼)
+      if(sp>1){
+        if(now>nextTumble[i]){newTumble(i);nextTumble[i]=now+90+Math.random()*130}
+        var tb=tumble[i],ax=-v.y/sp*.5+tb[0],ay=v.x/sp*.5+tb[1],az=tb[2],al=Math.hypot(ax,ay,az)||1;
+        R[i]=mmul(rotAxis(ax/al,ay/al,az/al,sp*k*dt),R[i]);
+      }
       dice[i].style.left=q.x.toFixed(1)+'px';dice[i].style.top=q.y.toFixed(1)+'px';
-      cubes[i].style.transform=TILT+'rotateX('+r.x.toFixed(1)+'deg) rotateY('+r.y.toFixed(1)+'deg)';
-      fast=Math.max(fast,Math.hypot(v.x,v.y));
+      cubes[i].style.transform=TILT+m3d(R[i]);
+      fast=Math.max(fast,sp);
     });
     // 누르거나 흔드는 동안은 계속 구르고, 멈춘 뒤 충분히 느려지면 눈이 정해진다
     if(!holding&&((now-rollStart>700&&now-lastMotion>300&&fast<30)||now-Math.max(releasedAt,lastMotion)>5000))endRoll();
@@ -499,13 +530,15 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   function endRoll(){
     cancelAnimationFrame(raf);
     rollTargets.forEach(function(i){
-      var v=S.vals[i]=1+Math.floor(Math.random()*6),cube=cubes[i],o=ORI[v],r=rot[i];
-      vel[i]={x:0,y:0};
-      cube.style.transform=tf(v);
+      // 멈춘 순간 화면 쪽을 향한 면이 결과. 가장 가까운 면으로 살짝 눕히기만 한다
+      var cube=cubes[i],from=R[i],to=snap(from);
+      vel[i]={x:0,y:0};R[i]=to;
+      S.vals[i]=faceToward(to,2,1);
+      cube.style.transform=TILT+m3d(to);
       if(cube.animate){
-        var a=cube.animate([{transform:tf(v,(r.x-o[0])%360,(r.y-o[1])%360)},{transform:tf(v)}],{duration:420,easing:'cubic-bezier(.2,.8,.3,1)'});
-        a.onfinish=function(){shade(i,v)};
-      }else shade(i,v);
+        var a=cube.animate([{transform:TILT+m3d(from)},{transform:TILT+m3d(to)}],{duration:240,easing:'ease-out'});
+        a.onfinish=function(){shade(i,true)};
+      }else shade(i,true);
     });
     S.rollsLeft--;rolling=false;holding=false;quietUntil=Date.now()+1000;
     $('btnRoll').style.setProperty('--p','0%');
