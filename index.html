@@ -181,9 +181,21 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .party strong{position:relative;font-family:var(--display);font-weight:400;font-size:min(26vw,120px);line-height:1;color:var(--brass);
   text-shadow:0 0 28px rgba(224,170,69,.75),0 5px 0 #7a5417;animation:yachu 3.4s cubic-bezier(.2,1.4,.3,1) both}
 @keyframes yachu{0%{transform:scale(.2) rotate(-12deg);opacity:0}12%{transform:scale(1.15) rotate(4deg);opacity:1}22%{transform:scale(1) rotate(-3deg)}85%{transform:scale(1.04) rotate(-3deg);opacity:1}100%{transform:scale(1.3) rotate(-3deg);opacity:0}}
-.guidebtn{height:46px;border-radius:12px;border:1.5px solid var(--line);font-size:15px;color:var(--ivory)}
-#guide{z-index:22}
-#guide .scroll{gap:20px}
+.guidetop{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:16px;height:38px;padding:0 14px;border-radius:999px;border:1.5px solid var(--brass);font-size:14px;color:var(--brass)}
+.guide{position:fixed;inset:0;z-index:22;display:grid;place-items:center;padding:20px 16px;background:rgba(10,11,14,.82)}
+.gcard{width:100%;max-width:380px;height:min(600px,100%);display:flex;flex-direction:column;background:var(--felt);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.6)}
+.gcard header{flex:none;display:flex;align-items:center;gap:10px;padding:12px 12px 12px 18px;border-bottom:1px solid var(--line)}
+.gcard h2{flex:1;margin:0;font-family:var(--display);font-weight:400;font-size:20px}
+.gcard header span{font-size:13px;color:var(--ivory-dim);font-variant-numeric:tabular-nums}
+.gcard .close{width:38px;height:38px;font-size:17px}
+.gcard footer{flex:none;display:flex;align-items:center;gap:10px;padding:12px 14px;border-top:1px solid var(--line)}
+.gnav{flex:none;height:46px;min-width:88px;border-radius:12px;border:1.5px solid var(--line);font-size:15px;color:var(--ivory)}
+.gnav:disabled{opacity:.3}
+.gnav.next{background:var(--brass);border-color:var(--brass);color:var(--ink);font-family:var(--display);font-size:17px}
+.gdots{flex:1;display:flex;justify-content:center;gap:6px}
+.gdots i{width:7px;height:7px;border-radius:50%;background:var(--line)}
+.gdots i.on{background:var(--brass)}
+#guide .scroll{border-top:0;padding:16px 18px 18px}
 #guide section{display:flex;flex-direction:column;gap:8px}
 #guide h3{margin:0;font-family:var(--display);font-weight:400;font-size:18px;color:var(--brass)}
 #guide p{margin:0;font-size:14.5px;line-height:1.65;color:var(--ivory);word-break:keep-all}
@@ -333,14 +345,15 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
       <button class="mini" id="btnLeave">방 나가기</button>
       <p class="warn" id="lobbyWarn"><b>게임 시작</b> 버튼을 누르면 상대가 들어올 수 없어요.<br>상대가 입장한 것을 확인한 후 <b>게임 시작</b>을 눌러주세요.</p>
     </div>
-    <button class="guidebtn" id="btnGuide">게임 설명서</button>
   </div>
+  <button class="guidetop" id="btnGuide">게임설명</button>
 </div>
 
-<div class="sheet" id="guide" hidden>
-  <div class="sheet-in">
+<div class="guide" id="guide" role="dialog" aria-label="게임 설명서" hidden>
+  <div class="gcard">
     <header>
       <h2>게임 설명서</h2>
+      <span id="gPage"></span>
       <button class="close" id="btnGuideClose" aria-label="닫기">✕</button>
     </header>
     <div class="scroll">
@@ -393,6 +406,11 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
         </ul>
       </section>
     </div>
+    <footer>
+      <button class="gnav" id="gPrev">이전</button>
+      <div class="gdots" id="gDots"></div>
+      <button class="gnav next" id="gNext">다음</button>
+    </footer>
   </div>
 </div>
 
@@ -400,7 +418,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 (function(){
   // 배포 도장. 커밋할 때 자동으로 바뀐다. 열려 있는 화면이 예전 버전이면 스스로 새로 받아 온다
   // (온라인에서 기기마다 버전이 다르면 알림 문구 같은 것이 어긋난다)
-  var BUILD='20261007-231410';
+  var BUILD='20261007-231526';
   function checkUpdate(){
     if(location.protocol==='file:')return;
     fetch(location.pathname+'?_='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){
@@ -1093,8 +1111,29 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   setInterval(aiStep,250);
   // 게임 설명서: 점수 표는 실제 점수 규칙에서 그대로 만들어서 어긋나지 않게 한다
   $('guideRows').innerHTML=ALL.map(function(c){return '<tr><td>'+c.name+'</td><td>'+c.rule+'</td><td>'+MAXPT[c.id]+'</td></tr>'}).join('');
-  $('btnGuide').addEventListener('click',function(){$('guide').hidden=false;$('guide').querySelector('.scroll').scrollTop=0});
+  var gPages=$('guide').querySelectorAll('section'),gAt=0;
+  function gShow(i){
+    gAt=Math.max(0,Math.min(gPages.length-1,i));
+    [].forEach.call(gPages,function(pg,k){pg.hidden=k!==gAt});
+    $('gPage').textContent=(gAt+1)+' / '+gPages.length;
+    $('gDots').innerHTML=[].map.call(gPages,function(pg,k){return '<i'+(k===gAt?' class="on"':'')+'></i>'}).join('');
+    $('gPrev').disabled=gAt===0;
+    $('gNext').textContent=gAt===gPages.length-1?'닫기':'다음';
+    $('guide').querySelector('.scroll').scrollTop=0;
+  }
+  $('btnGuide').addEventListener('click',function(){gShow(0);$('guide').hidden=false});
   $('btnGuideClose').addEventListener('click',function(){$('guide').hidden=true});
+  $('gPrev').addEventListener('click',function(){gShow(gAt-1)});
+  $('gNext').addEventListener('click',function(){if(gAt===gPages.length-1)$('guide').hidden=true;else gShow(gAt+1)});
+  // 바깥 어두운 부분을 누르면 닫히고, 좌우로 밀면 페이지가 넘어간다
+  $('guide').addEventListener('click',function(e){if(e.target===$('guide'))$('guide').hidden=true});
+  var gX=null,gY=0;
+  $('guide').addEventListener('touchstart',function(e){gX=e.touches[0].clientX;gY=e.touches[0].clientY},{passive:true});
+  $('guide').addEventListener('touchend',function(e){
+    if(gX===null)return;
+    var dx=e.changedTouches[0].clientX-gX,dy=e.changedTouches[0].clientY-gY;gX=null;
+    if(Math.abs(dx)>60&&Math.abs(dx)>Math.abs(dy)*1.5)gShow(gAt+(dx<0?1:-1));
+  },{passive:true});
   $('mAi').addEventListener('click',function(){setMode('ai')});
   $('btnAiStart').addEventListener('click',function(){
     var n=$('aiName').value.trim()||'나';
