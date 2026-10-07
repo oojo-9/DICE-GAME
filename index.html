@@ -324,7 +324,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 (function(){
   // 배포 도장. 커밋할 때 자동으로 바뀐다. 열려 있는 화면이 예전 버전이면 스스로 새로 받아 온다
   // (온라인에서 기기마다 버전이 다르면 알림 문구 같은 것이 어긋난다)
-  var BUILD='20261007-182039';
+  var BUILD='20261007-183115';
   function checkUpdate(){
     if(location.protocol==='file:')return;
     fetch(location.pathname+'?_='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){
@@ -774,6 +774,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     S.last=who?{who:who.name+'님이',what:'새 게임 시작',tail:'같은 멤버로 한 판 더!',n:Date.now()}:null;
     if(S.last)seenLast=S.last.n;
     resetDice();place();forcePush=true;save();closeSheet();render();
+    track('game_start',{mode:playMode(),players:S.players.length,rematch:1});
     aiAt=Date.now()+1200;
     toast('새 게임을 시작했어요 · '+P().name+' 차례');
   }
@@ -946,6 +947,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     S.turn=0;resetDice();S.started=true;
     $('setup').hidden=true;place();render();save();
     toast(P().name+' 차례예요');
+    track('game_start',{mode:'local',players:S.players.length});
   });
 
   // ===== AI 상대 =====
@@ -1019,6 +1021,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     S.turn=0;S.last=null;S.gid=Date.now();resetDice();S.started=true;
     $('setup').hidden=true;place();render();save();
     toast(n+' 차례예요');
+    track('game_start',{mode:'ai',players:2});
   });
   try{$('aiName').value=localStorage.getItem('yachu-name')||''}catch(e){}
 
@@ -1030,7 +1033,8 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     projectId:"yachu-11479",
     storageBucket:"yachu-11479.firebasestorage.app",
     messagingSenderId:"808498612344",
-    appId:"1:808498612344:web:597c0f098e115352e5c58d"
+    appId:"1:808498612344:web:597c0f098e115352e5c58d",
+    measurementId:"G-ZFK3CCRT25"
   };
   var FBV='https://cdn.jsdelivr.net/npm/firebase@10.14.1/firebase-',ROOMKEY='yachu-room',NAMEKEY='yachu-name',netReady=null;
   function loadScript(src){return new Promise(function(ok,no){var el=document.createElement('script');el.src=src;el.onload=ok;el.onerror=function(){no(new Error('script'))};document.head.appendChild(el)})}
@@ -1042,6 +1046,15 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
       .then(function(c){myUid=c.user.uid;db=firebase.database()});
     netReady.catch(function(){netReady=null});
     return netReady;
+  }
+  // 이용 통계(Firebase 프로젝트에 연결된 Google Analytics). 앱을 열면 조용히 붙는다. 막혀 있거나 실패해도 게임에는 영향이 없다
+  window.dataLayer=window.dataLayer||[];
+  function gtag(){window.dataLayer.push(arguments)}
+  function track(name,params){gtag('event',name,params)}
+  function playMode(){return online?'online':S.players.some(function(p){return p.ai})?'ai':'local'}
+  if(location.protocol!=='file:'){
+    gtag('js',new Date());gtag('config',FB.measurementId);
+    loadScript('https://www.googletagmanager.com/gtag/js?id='+FB.measurementId).catch(function(){});
   }
   function netMsg(t){$('netMsg').textContent=t||''}
   function netErr(e){
@@ -1314,6 +1327,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     if(!online||!S.players[0]||S.players[0].id!==myUid)return;
     S.started=true;S.turn=0;S.gid=Date.now();resetDice();$('setup').hidden=true;place();
     forcePush=true;save();render();toast(P().name+' 차례예요');
+    track('game_start',{mode:'online',players:S.players.length});
   });
   $('btnLeave').addEventListener('click',leaveRoom);
   try{$('myName').value=localStorage.getItem(NAMEKEY)||''}catch(e){}
