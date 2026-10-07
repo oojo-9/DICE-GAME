@@ -305,6 +305,20 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 
 <script>
 (function(){
+  // 배포 도장. 커밋할 때 자동으로 바뀐다. 열려 있는 화면이 예전 버전이면 스스로 새로 받아 온다
+  // (온라인에서 기기마다 버전이 다르면 알림 문구 같은 것이 어긋난다)
+  var BUILD='20261007-165811';
+  function checkUpdate(){
+    if(location.protocol==='file:')return;
+    fetch(location.pathname+'?_='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){
+      var m=new RegExp('var BUI'+'LD='+"'([^']+)'").exec(t);
+      if(!m||m[1]===BUILD||rolling)return;
+      try{if(sessionStorage.getItem('yachu-upd')===m[1])return;sessionStorage.setItem('yachu-upd',m[1])}catch(e){}
+      location.replace(location.pathname+'?v='+encodeURIComponent(m[1]));
+    }).catch(function(){});
+  }
+  checkUpdate();
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)checkUpdate()});
   var sum=function(d){return d.reduce(function(a,b){return a+b},0)};
   var counts=function(d){var c=[0,0,0,0,0,0,0];d.forEach(function(v){c[v]++});return c};
   var num=function(n){return function(d){return d.filter(function(v){return v===n}).length*n}};
@@ -460,6 +474,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     if(!S.started)return;
     var over=gameOver(),p=P(),mine=myTurn();
     document.body.classList.toggle('spectate',online&&!mine);
+    if(!resetArmed)$('btnReset').textContent=online?'방 나가기':'리셋';
     dice.forEach(function(el,i){
       el.classList.toggle('blank',!S.vals[i]);
       el.setAttribute('aria-label',S.vals[i]?('주사위 '+S.vals[i]+(S.held.indexOf(i)>=0?' (고정됨)':'')):'아직 굴리지 않은 주사위');
@@ -760,7 +775,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     setPhoto(URL.createObjectURL(f));
   });
   var resetArmed=false,resetT=0;
-  function disarmReset(){resetArmed=false;clearTimeout(resetT);$('btnReset').textContent='리셋';$('btnReset').classList.remove('arm')}
+  function disarmReset(){resetArmed=false;clearTimeout(resetT);$('btnReset').textContent=online?'방 나가기':'리셋';$('btnReset').classList.remove('arm')}
   $('btnReset').addEventListener('click',function(){
     if(rolling)return;
     if(!resetArmed){
@@ -918,7 +933,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     lastSeq=st.seq||0;
     // 다른 사람이 점수를 등록하면 화면 가득 알려 준다 (방에 막 들어왔을 때의 지난 기록은 건너뛴다)
     var ln=st.last?st.last.n:0;
-    if(seenLast!==null&&ln&&ln!==seenLast&&st.by!==myUid)notice(st.last.who,st.last.what,st.last.tail);
+    if(seenLast!==null&&ln&&ln!==seenLast&&st.by!==myUid)notice(st.last.what?st.last.who:st.last.who+'님이',st.last.what||(st.last.cat+' '+st.last.pts+'점'),st.last.what?st.last.tail:'등록했습니다');
     seenLast=ln;
     S={started:!!st.started,
        players:(st.players||[]).map(function(pl){return {id:pl.id,name:pl.name,scores:pl.scores||{}}}),
@@ -1041,7 +1056,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     try{localStorage.removeItem(ROOMKEY)}catch(e){}
     document.body.classList.remove('spectate');
     var su=S.setup;S=fresh();S.setup=su;
-    $('sheet').hidden=true;resetDice();place();mode='online';netMsg('');showSetup();
+    $('sheet').hidden=true;resetDice();place();mode='online';netMsg('');$('btnReset').textContent='리셋';showSetup();
   }
   // 방에서 나가기: 내 자리를 빼고 차례를 맞춰 둔다. 마지막 사람이 나가면 방이 지워진다
   function leaveRoom(){
