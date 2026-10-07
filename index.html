@@ -137,7 +137,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .now{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ivory-dim)}
 .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;flex:none}
 .card{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed;font-variant-numeric:tabular-nums}
-.card col.item{width:124px}
+.card col.item{width:172px}
 .card col.pl{width:62px}
 .card th,.card td{height:42px;padding:0 6px;border-bottom:1px solid var(--line);border-left:1px solid var(--line);text-align:center}
 .card tr>:first-child{border-left:0;position:sticky;left:0;z-index:1;background:var(--felt-deep);text-align:left;padding-left:10px}
@@ -147,6 +147,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .card thead th.cur{background:var(--brass);color:var(--ink)}
 .card tbody th{font-weight:400;line-height:1.15}
 .card .nm{display:block;font-size:14.5px;white-space:nowrap}
+.card .mx{position:absolute;right:8px;top:7px;font-size:11px;color:var(--brass);white-space:nowrap}
 .card .rl{display:block;font-size:10.5px;color:var(--ivory-dim);white-space:nowrap}
 .card td{font-family:var(--display);font-size:19px;color:var(--ivory)}
 .card td.cur{background:rgba(224,170,69,.1)}
@@ -324,7 +325,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 (function(){
   // 배포 도장. 커밋할 때 자동으로 바뀐다. 열려 있는 화면이 예전 버전이면 스스로 새로 받아 온다
   // (온라인에서 기기마다 버전이 다르면 알림 문구 같은 것이 어긋난다)
-  var BUILD='20261007-183115';
+  var BUILD='20261007-224420';
   function checkUpdate(){
     if(location.protocol==='file:')return;
     fetch(location.pathname+'?_='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){
@@ -358,6 +359,8 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     {id:'large',name:'라지스트레이트',rule:'연속 5개 · 무조건 30점',fn:function(d){return run(d,5)?30:0}},
     {id:'yacht',name:'야츄',rule:'같은 눈 5개 · 무조건 50점',fn:function(d){return Math.max.apply(null,counts(d))===5?50:0}}
   ];
+  // 칸마다 받을 수 있는 최대 점수 (점수판 항목 옆에 표시)
+  var MAXPT={n1:5,n2:10,n3:15,n4:20,n5:25,n6:30,choice:30,four:24,full:28,small:15,large:30,yacht:50};
   var ALL=UPPER.concat(LOWER), BONUS_AT=63, BONUS=35, KEY='yachu-v2', MAXP=8;
 
   var S={started:false,players:[],turn:0,vals:[0,0,0,0,0],held:[],rollsLeft:3,setup:{n:2,names:[]}};
@@ -807,18 +810,18 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
       h+='<div class="now"><span>'+esc(P().name)+'의 주사위</span>'+S.vals.map(function(v){return '<span class="face flat" data-f="'+v+'">'+PIPS+'</span>'}).join('')+'</div>';
     }
     var row=function(c){
-      return '<tr><th><span class="nm">'+c.name+'</span><span class="rl">'+c.rule+'</span></th>'+ps.map(function(p,i){
+      return '<tr><th><span class="nm">'+c.name+'</span><span class="mx">최대 '+MAXPT[c.id]+'점</span><span class="rl">'+c.rule+'</span></th>'+ps.map(function(p,i){
         var cls=hi(i)?'cur':'';
         if(c.id in p.scores)return '<td class="'+cls+'">'+p.scores[c.id]+'</td>';
         if(can&&i===S.turn){var pv=c.fn(S.vals);return '<td class="open '+cls+(pv===0?' zero':'')+(selected===c.id?' sel':'')+'"><button data-id="'+c.id+'" aria-label="'+c.name+' '+pv+'점">'+pv+'</button></td>'}
         return '<td class="'+cls+'"></td>';
       }).join('')+'</tr>';
     };
-    h+='<div class="tablewrap"><table class="card" style="min-width:'+(124+62*ps.length)+'px"><colgroup><col class="item">'+ps.map(function(){return '<col class="pl">'}).join('')+'</colgroup>';
+    h+='<div class="tablewrap"><table class="card" style="min-width:'+(172+62*ps.length)+'px"><colgroup><col class="item">'+ps.map(function(){return '<col class="pl">'}).join('')+'</colgroup>';
     h+='<thead><tr><th>항목</th>'+ps.map(function(p,i){return '<th class="'+(hi(i)?'cur':'')+'">'+esc(p.name)+'</th>'}).join('')+'</tr></thead><tbody>';
     h+=UPPER.map(row).join('');
     // 보너스: 위 6칸 합이 63점 이상이 되는 순간 +35, 6칸을 다 채우고도 못 넘으면 0
-    h+='<tr class="auto"><th><span class="nm">보너스</span><span class="rl">위 6칸 합 '+BONUS_AT+'점 이상 · 자동</span></th>'+ps.map(function(p,i){
+    h+='<tr class="auto"><th><span class="nm">보너스</span><span class="mx">+'+BONUS+'점</span><span class="rl">위 6칸 합 '+BONUS_AT+'점 이상 · 자동</span></th>'+ps.map(function(p,i){
       var up=upperSum(p),full=UPPER.every(function(c){return c.id in p.scores});
       return '<td class="'+(hi(i)?'cur':'')+'">'+(up>=BONUS_AT?'+'+BONUS:full?'0':'<small>'+up+'/'+BONUS_AT+'</small>')+'</td>';
     }).join('')+'</tr>';
