@@ -173,6 +173,21 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .stepper button{width:46px;height:46px;border-radius:50%;border:1.5px solid var(--ivory);font-size:24px;line-height:1}
 .stepper button:disabled{opacity:.3}
 .stepper b{min-width:44px;text-align:center;font-family:var(--display);font-weight:400;font-size:30px;color:var(--brass)}
+.modes{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:4px;border-radius:14px;background:rgba(0,0,0,.35)}
+.modes button{height:42px;border-radius:10px;font-size:15px;color:var(--ivory-dim)}
+.modes button.on{background:var(--ivory);color:var(--ink)}
+.box{display:flex;flex-direction:column;gap:16px}
+.box .hint{margin:0;font-size:13px;color:var(--ivory-dim);text-align:center}
+.join button{flex:none;height:48px;padding:0 20px;border-radius:12px;border:1.5px solid var(--ivory);font-family:var(--display);font-size:17px}
+.msg{margin:0;min-height:1.4em;text-align:center;color:var(--brass);font-size:14px;word-break:keep-all}
+.code{font-family:var(--display);font-size:60px;line-height:1;letter-spacing:.14em;padding-left:.14em;text-align:center;color:var(--brass);-webkit-user-select:text;user-select:text}
+.lobbylist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.lobbylist li{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border:1px solid var(--line);border-radius:12px;font-size:16px}
+.lobbylist li span{color:var(--brass);font-size:13px}
+.box .mini{align-self:center;padding:0 18px}
+/* 온라인에서 남의 차례를 볼 때: 받아온 위치 사이를 부드럽게 잇는다 */
+.spectate #tray .die{transition:left .12s linear,top .12s linear}
+.spectate #tray .cube{transition:transform .12s linear}
 .names{display:flex;flex-direction:column;gap:8px}
 .names label{display:flex;align-items:center;gap:10px}
 .names span{flex:none;width:24px;text-align:center;font-family:var(--display);color:var(--brass);font-size:18px}
@@ -238,16 +253,37 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   <div class="setup-in">
     <h1>야츄</h1>
     <p class="tag">주사위 다섯 개, 흔들기 세 번</p>
-    <div class="count">
-      <span>몇 명이서 하나요?</span>
-      <div class="stepper">
-        <button id="btnMinus" aria-label="한 명 줄이기">−</button>
-        <b id="pn">2</b>
-        <button id="btnPlus" aria-label="한 명 늘리기">+</button>
-      </div>
+    <div class="modes" id="modes">
+      <button id="mLocal" class="on">한 기기로 같이</button>
+      <button id="mOnline">온라인으로 같이</button>
     </div>
-    <div class="names" id="names"></div>
-    <button class="btn roll" id="btnStart">게임 시작</button>
+    <div class="box" id="localBox">
+      <div class="count">
+        <span>몇 명이서 하나요?</span>
+        <div class="stepper">
+          <button id="btnMinus" aria-label="한 명 줄이기">−</button>
+          <b id="pn">2</b>
+          <button id="btnPlus" aria-label="한 명 늘리기">+</button>
+        </div>
+      </div>
+      <div class="names" id="names"></div>
+      <button class="btn roll" id="btnStart">게임 시작</button>
+    </div>
+    <div class="box" id="onlineBox" hidden>
+      <div class="names"><label><input id="myName" type="text" maxlength="8" autocomplete="off" enterkeyhint="done" placeholder="내 닉네임"></label></div>
+      <button class="btn roll" id="btnCreate">방 만들기</button>
+      <p class="hint">친구가 만든 방에 들어가려면 코드를 입력하세요</p>
+      <div class="names"><label class="join"><input id="roomCode" type="text" inputmode="numeric" maxlength="5" autocomplete="off" placeholder="방 코드 5자리"><button id="btnJoin">입장</button></label></div>
+      <p class="msg" id="netMsg" role="status"></p>
+    </div>
+    <div class="box" id="lobbyBox" hidden>
+      <p class="hint">방 코드 · 친구에게 알려주세요</p>
+      <div class="code" id="lobbyCode"></div>
+      <ul class="lobbylist" id="lobbyList"></ul>
+      <button class="btn roll" id="btnLobbyStart">게임 시작</button>
+      <p class="msg" id="lobbyWait">방장이 시작하기를 기다리는 중…</p>
+      <button class="mini" id="btnLeave">방 나가기</button>
+    </div>
   </div>
 </div>
 
@@ -279,7 +315,14 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   try{var saved=JSON.parse(localStorage.getItem(KEY));if(saved&&saved.vals&&saved.vals.length===5&&saved.players&&saved.setup)S=saved}catch(e){}
   if(!S.players.length)S.started=false;
   function fresh(){return {started:false,players:[],turn:0,vals:[0,0,0,0,0],held:[],rollsLeft:3,setup:{n:2,names:[]}}}
-  function save(){try{localStorage.setItem(KEY,JSON.stringify(S));return true}catch(e){return false}}
+  // 온라인 상태. online이면 S는 방의 공유 상태를 그대로 따라간다
+  var online=false,room=null,myUid=null,db=null,stateRef=null,liveRef=null,lastSeq=0,pushedSeq=-1,forcePush=false,
+      remotePlacing=false,remoteRolling=false,liveSeq=0,lastLive=0,liveFirst=true,mode='local';
+  function myTurn(){return !online||(S.started&&!!P()&&P().id===myUid)}
+  function save(){
+    if(online){var go=forcePush||myTurn();forcePush=false;if(go)push();return true}
+    try{localStorage.setItem(KEY,JSON.stringify(S));return true}catch(e){return false}
+  }
 
   var $=function(id){return document.getElementById(id)};
   var esc=function(t){return String(t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
@@ -376,7 +419,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     S.held.forEach(function(i){keep.appendChild(dice[i]);dice[i].style.left=dice[i].style.top=''});
     for(var i=0;i<5;i++){
       if(S.held.indexOf(i)>=0)continue;
-      if(dice[i].parentNode!==tray){pos[i]=freeSpot(i);tray.appendChild(dice[i])}
+      if(dice[i].parentNode!==tray){if(!remotePlacing)pos[i]=freeSpot(i);tray.appendChild(dice[i])}
       applyPos(i);
     }
     dice.forEach(function(el,i){
@@ -389,34 +432,37 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   window.addEventListener('resize',function(){if(rolling)return;for(var i=0;i<5;i++)if(dice[i].parentNode===tray)applyPos(i)});
 
   function chips(cur){
-    return S.players.map(function(p,i){return '<span class="chip'+(i===cur?' cur':'')+'">'+esc(p.name)+'</span>'}).join('');
+    return S.players.map(function(p,i){return '<span class="chip'+(i===cur?' cur':'')+'">'+esc(p.name)+(online&&p.id===myUid?' (나)':'')+'</span>'}).join('');
   }
 
   function render(){
     if(!S.started)return;
-    var over=gameOver(),p=P();
+    var over=gameOver(),p=P(),mine=myTurn();
+    document.body.classList.toggle('spectate',online&&!mine);
     dice.forEach(function(el,i){
       el.classList.toggle('blank',!S.vals[i]);
       el.setAttribute('aria-label',S.vals[i]?('주사위 '+S.vals[i]+(S.held.indexOf(i)>=0?' (고정됨)':'')):'아직 굴리지 않은 주사위');
     });
-    $('round').textContent=over?'게임 끝':Math.min(cnt(p)+1,ALL.length)+' / '+ALL.length+' 판';
+    $('round').textContent=(over?'게임 끝':Math.min(cnt(p)+1,ALL.length)+' / '+ALL.length+' 판')+(online?' · 방 '+room:'');
     $('left').textContent='남은 흔들기 '+S.rollsLeft+'번';
     [].forEach.call($('lamps').children,function(l,i){l.classList.toggle('off',i>=S.rollsLeft)});
     $('turns').innerHTML=chips(over?-1:S.turn);
     var cur=$('turns').querySelector('.cur');if(cur&&cur.scrollIntoView)cur.scrollIntoView({block:'nearest',inline:'nearest'});
     // 지금 주사위로 점수가 나는 빈 칸을 점수 높은 순으로
     var av='';
-    if(!over&&!rolling&&rolled()){
+    if(remoteRolling){av=''}
+    else if(!over&&!rolling&&rolled()){
       var list=ALL.filter(function(c){return !(c.id in p.scores)}).map(function(c){return {c:c,v:c.fn(S.vals)}})
         .filter(function(x){return x.v>0}).sort(function(a,b){return b.v-a.v});
       av=list.length?list.map(function(x){return '<button data-id="'+x.c.id+'">'+x.c.name+'<b>'+x.v+'</b></button>'}).join(''):'점수가 나는 칸이 없어요';
     }else if(!over&&!rolling){av='흔들면 등록할 수 있는 항목이 여기에 나와요'}
     $('avail').innerHTML=av;$('avail').scrollLeft=0;
-    $('btnRoll').disabled=(rolling&&!holding)||over||S.rollsLeft===0;
-    $('btnHeart').disabled=rolling||over||S.rollsLeft===0||S.held.length===0;
-    $('btnScore').classList.toggle('nudge',!over&&rolled()&&S.rollsLeft===0);
-    var who='<b>'+esc(p.name)+'</b> 차례 · ',msg;
+    $('btnRoll').disabled=(rolling&&!holding)||over||S.rollsLeft===0||!mine;
+    $('btnHeart').disabled=rolling||over||S.rollsLeft===0||S.held.length===0||!mine;
+    $('btnScore').classList.toggle('nudge',mine&&!over&&rolled()&&S.rollsLeft===0);
+    var who=(online&&mine?'<b>내 차례</b> · ':'<b>'+esc(p.name)+'</b> 차례 · '),msg;
     if(over){var w=winners();msg='게임 끝! 1등 <b>'+esc(w.names.join(', '))+'</b> '+w.score+'점'}
+    else if(!mine)msg=who+(remoteRolling?'굴리는 중…':!rolled()?'흔들기를 기다리는 중…':S.rollsLeft>0?'주사위를 고르는 중…':'점수를 기록하는 중…');
     else if(rolling)msg=who+'데굴데굴…';
     else if(!rolled())msg=who+'휴대폰을 흔들어 주사위를 굴리세요.';
     else if(S.rollsLeft>0)msg=who+'남길 주사위를 눌러 고정하고 다시 흔드세요.';
@@ -428,7 +474,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   function toast(t){var el=$('toast');el.textContent=t;el.classList.add('on');clearTimeout(toastT);toastT=setTimeout(function(){el.classList.remove('on')},1800)}
 
   function toggleHold(i){
-    if(rolling||!S.started)return;
+    if(rolling||!S.started||!myTurn())return;
     if(!rolled()){toast('먼저 주사위를 흔들어 주세요');return}
     var at=S.held.indexOf(i);
     if(at>=0)S.held.splice(at,1);else S.held.push(i);
@@ -436,7 +482,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   }
 
   function beginRoll(quiet){
-    if(rolling||!S.started||!$('sheet').hidden)return false;
+    if(rolling||!S.started||!myTurn()||!$('sheet').hidden)return false;
     if(gameOver()){if(!quiet)toast('게임이 끝났어요. 점수확인에서 새 게임을 시작하세요');return false}
     if(S.rollsLeft===0){if(!quiet)toast('세 번 다 흔들었어요. 점수를 기록하세요');return false}
     rollTargets=[0,1,2,3,4].filter(function(i){return S.held.indexOf(i)<0});
@@ -489,6 +535,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
       if(now-lastKick>90){lastKick=now;kick(110+560*ch)}
       if(now-holdStart>6000)release();
     }
+    if(online&&liveRef&&now-lastLive>90){lastLive=now;liveRef.set({s:++liveSeq,d:diceOut(),t:rollTargets})}
     var damp=Math.exp(-2.4*dt);
     rollTargets.forEach(function(i){
       var q=pos[i],v=vel[i];
@@ -604,14 +651,14 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   });
   // 야수의심장: 고정한 주사위를 전부 판으로 되돌리기만 한다. 굴리는 건 흔들어야 한다
   $('btnHeart').addEventListener('click',function(){
-    if(rolling||!S.held.length)return;
+    if(rolling||!S.held.length||!myTurn())return;
     S.held=[];place();render();save();
     toast('고정을 모두 풀었어요. 흔들어서 5개를 굴리세요');
   });
 
   // 점수판
   function renderSheet(){
-    var over=gameOver(),can=!over&&rolled(),ps=S.players,h='',w=over?winners():null;
+    var over=gameOver(),can=!over&&rolled()&&myTurn(),ps=S.players,h='',w=over?winners():null;
     var hi=function(i){return over?total(ps[i])===w.score:i===S.turn};
     if(can){
       h+='<div class="now"><span>'+esc(P().name)+'의 주사위</span>'+S.vals.map(function(v){return '<span class="face flat" data-f="'+v+'">'+PIPS+'</span>'}).join('')+'</div>';
@@ -649,7 +696,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     var rec=$('btnRecord'),c=ALL.filter(function(x){return x.id===selected})[0];
     if(over){rec.disabled=true;rec.textContent='1등 '+w.names.join(', ')+' · '+w.score+'점'}
     else if(c&&can){rec.disabled=false;rec.textContent=c.name+'에 '+c.fn(S.vals)+'점 기록'}
-    else{rec.disabled=true;rec.textContent=can?'기록할 칸을 고르세요':P().name+' · 먼저 주사위를 흔드세요'}
+    else{rec.disabled=true;rec.textContent=can?'기록할 칸을 고르세요':!myTurn()?'지금은 '+P().name+' 차례예요':P().name+' · 먼저 주사위를 흔드세요'}
     $('btnNew').textContent=newArmed?'한 번 더 누르면 초기화':'새 게임';
   }
   function openSheet(){if(rolling||!S.started)return;selected=null;newArmed=false;renderSheet();$('sheet').hidden=false;$('scroll').scrollTop=0;var cur=$('scroll').querySelector('thead th.cur');if(cur&&cur.scrollIntoView)cur.scrollIntoView({block:'nearest',inline:'center'})}
@@ -659,6 +706,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   // 임시저장: 지금 상태를 이 휴대폰에 저장. 리셋: 이름과 점수까지 전부 지우고 처음 화면으로
   $('btnSave').addEventListener('click',function(){
     if(rolling)return;
+    if(online){toast('온라인 방은 자동으로 저장돼요. 방 코드 '+room+'로 다시 들어올 수 있어요');return}
     toast(save()?'임시저장했어요. 다시 들어오면 이어서 할 수 있어요':'이 브라우저에서는 저장할 수 없어요');
   });
   // 배경 찍기: 카메라로 찍은 사진을 판 배경으로 쓴다. 어디에도 저장하지 않아서 창을 닫으면 사라진다
@@ -686,10 +734,11 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   $('btnReset').addEventListener('click',function(){
     if(rolling)return;
     if(!resetArmed){
-      resetArmed=true;$('btnReset').textContent='한 번 더 누르면 삭제';$('btnReset').classList.add('arm');
+      resetArmed=true;$('btnReset').textContent=online?'한 번 더 누르면 방 나가기':'한 번 더 누르면 삭제';$('btnReset').classList.add('arm');
       resetT=setTimeout(disarmReset,3000);return;
     }
     disarmReset();
+    if(online){leaveRoom();return}
     try{localStorage.removeItem(KEY)}catch(e){}
     S=fresh();resetDice();place();showSetup();
   });
@@ -706,8 +755,8 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   });
   $('btnRecord').addEventListener('click',function(){
     var c=ALL.filter(function(x){return x.id===selected})[0];
-    if(!c||!rolled()||gameOver())return;
-    P().scores[c.id]=c.fn(S.vals);
+    if(!c||!rolled()||gameOver()||!myTurn())return;
+    P().scores[c.id]=c.fn(S.vals);forcePush=true;
     resetDice();
     if(!gameOver())S.turn=(S.turn+1)%S.players.length;
     place();render();save();
@@ -717,7 +766,13 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   $('btnNew').addEventListener('click',function(){
     var any=S.players.some(function(p){return cnt(p)>0});
     if(!newArmed&&any&&!gameOver()){newArmed=true;renderSheet();return}
-    newArmed=false;S.started=false;save();closeSheet();showSetup();
+    newArmed=false;
+    if(online){
+      // 온라인: 같은 방, 같은 사람들로 점수만 지우고 다시 시작
+      S.players.forEach(function(p){p.scores={}});S.turn=0;resetDice();place();
+      forcePush=true;save();closeSheet();render();toast('새 게임을 시작했어요');return;
+    }
+    S.started=false;save();closeSheet();showSetup();
   });
 
   // 처음 들어올 때: 인원과 닉네임
@@ -729,7 +784,13 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     $('btnMinus').disabled=n<=1;$('btnPlus').disabled=n>=MAXP;
   }
   function setCount(n){S.setup.n=Math.max(1,Math.min(MAXP,n));renderNames();save()}
-  function showSetup(){renderNames();$('setup').hidden=false}
+  function setMode(m){
+    mode=m;
+    $('modes').hidden=m==='lobby';
+    $('localBox').hidden=m!=='local';$('onlineBox').hidden=m!=='online';$('lobbyBox').hidden=m!=='lobby';
+    $('mLocal').classList.toggle('on',m==='local');$('mOnline').classList.toggle('on',m==='online');
+  }
+  function showSetup(){renderNames();setMode(mode==='lobby'?'online':mode);$('setup').hidden=false}
   $('btnMinus').addEventListener('click',function(){setCount(S.setup.n-1)});
   $('btnPlus').addEventListener('click',function(){setCount(S.setup.n+1)});
   $('names').addEventListener('input',function(e){
@@ -746,7 +807,196 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     toast(P().name+' 차례예요');
   });
 
+  // ===== 온라인: Firebase 실시간 DB의 rooms/<코드>/state 가 방의 공유 상태, live 가 굴리는 중의 주사위 위치 =====
+  var FB={
+    apiKey:"AIzaSyBWoy8w_X99kXZLARFSx8KJGzT-tP3ASwM",
+    authDomain:"yachu-11479.firebaseapp.com",
+    databaseURL:"https://yachu-11479-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId:"yachu-11479",
+    storageBucket:"yachu-11479.firebasestorage.app",
+    messagingSenderId:"808498612344",
+    appId:"1:808498612344:web:597c0f098e115352e5c58d"
+  };
+  var FBV='https://cdn.jsdelivr.net/npm/firebase@10.14.1/firebase-',ROOMKEY='yachu-room',NAMEKEY='yachu-name',netReady=null;
+  function loadScript(src){return new Promise(function(ok,no){var el=document.createElement('script');el.src=src;el.onload=ok;el.onerror=function(){no(new Error('script'))};document.head.appendChild(el)})}
+  function net(){
+    if(netReady)return netReady;
+    netReady=loadScript(FBV+'app-compat.js')
+      .then(function(){return Promise.all([loadScript(FBV+'auth-compat.js'),loadScript(FBV+'database-compat.js')])})
+      .then(function(){if(!firebase.apps.length)firebase.initializeApp(FB);return firebase.auth().signInAnonymously()})
+      .then(function(c){myUid=c.user.uid;db=firebase.database()});
+    netReady.catch(function(){netReady=null});
+    return netReady;
+  }
+  function netMsg(t){$('netMsg').textContent=t||''}
+  function netErr(e){
+    var c=(e&&(e.code||e.message)||'')+'';
+    netMsg(/operation-not-allowed|admin-restricted/.test(c)?'Firebase에서 익명 로그인이 꺼져 있어요':
+           /PERMISSION_DENIED|permission/i.test(c)?'Firebase 보안 규칙 때문에 막혔어요':
+           /unauthorized-domain/.test(c)?'이 주소가 Firebase 승인된 도메인에 없어요':'연결에 실패했어요. 인터넷을 확인해 주세요');
+  }
+
+  // 주사위 5개의 위치(판 크기 대비 비율)와 자세를 숫자 55개로 주고받는다. 화면 크기가 달라도 같은 자리에 보인다
+  function diceOut(){
+    var b=bounds(),a=[];
+    for(var i=0;i<5;i++){
+      var q=pos[i],m=R[i];
+      a.push(b.w?+(q.x/b.w).toFixed(4):0,b.h?+(q.y/b.h).toFixed(4):0);
+      for(var r=0;r<3;r++)for(var c=0;c<3;c++)a.push(+m[r][c].toFixed(3));
+    }
+    return a;
+  }
+  function diceIn(a,only){
+    if(!a||a.length<55)return;
+    var b=bounds();
+    for(var i=0;i<5;i++){
+      if(only&&only.indexOf(i)<0)continue;
+      var o=i*11;
+      pos[i]={x:a[o]*b.w,y:a[o+1]*b.h};
+      R[i]=[[a[o+2],a[o+3],a[o+4]],[a[o+5],a[o+6],a[o+7]],[a[o+8],a[o+9],a[o+10]]];
+      cubes[i].style.transform=TILT+m3d(R[i]);
+      if(dice[i].parentNode===tray)applyPos(i);
+    }
+  }
+  function push(){
+    if(!stateRef)return;
+    lastSeq++;pushedSeq=lastSeq;
+    stateRef.set({started:S.started,players:S.players,turn:S.turn,vals:S.vals,held:S.held,rollsLeft:S.rollsLeft,dice:diceOut(),by:myUid,seq:lastSeq})
+      .catch(function(){toast('연결이 불안정해요. 다시 시도해 주세요')});
+  }
+  function isMe(pl){return pl.id===myUid}
+  function onState(snap){
+    var st=snap.val();
+    if(!st){if(online){leaveLocal();netMsg('방이 없어졌어요')}return}
+    if(st.by===myUid&&st.seq===pushedSeq)return;   // 내가 방금 보낸 것
+    if(rolling)return;
+    var wasMine=S.started&&myTurn();
+    lastSeq=st.seq||0;
+    S={started:!!st.started,
+       players:(st.players||[]).map(function(pl){return {id:pl.id,name:pl.name,scores:pl.scores||{}}}),
+       turn:st.turn||0,vals:st.vals||[0,0,0,0,0],held:st.held||[],rollsLeft:st.rollsLeft==null?3:st.rollsLeft,setup:S.setup};
+    if(S.turn>=S.players.length)S.turn=0;
+    remoteRolling=false;
+    if(!S.players.some(isMe)){leaveLocal();netMsg('방에서 나왔어요');return}
+    if(!S.started){showLobby();return}
+    $('setup').hidden=true;
+    diceIn(st.dice);
+    remotePlacing=true;place();remotePlacing=false;
+    for(var i=0;i<5;i++)shade(i,!!S.vals[i]);
+    render();
+    if(!$('sheet').hidden)renderSheet();
+    if(!wasMine&&myTurn()&&!gameOver()){toast('내 차례예요');if(navigator.vibrate){try{navigator.vibrate([60,60,60])}catch(e){}}}
+  }
+  // 남이 굴리는 동안 들어오는 주사위 위치
+  function onLive(snap){
+    var v=snap.val();
+    if(liveFirst){liveFirst=false;return}
+    if(!v||!S.started||rolling||myTurn())return;
+    var t=v.t||[];
+    if(!remoteRolling){remoteRolling=true;t.forEach(function(i){shade(i,false)});render()}
+    diceIn(v.d,t);
+  }
+  function attach(code){
+    room=code;online=true;lastSeq=0;pushedSeq=-1;liveFirst=true;
+    try{localStorage.setItem(ROOMKEY,code)}catch(e){}
+    stateRef=db.ref('rooms/'+code+'/state');liveRef=db.ref('rooms/'+code+'/live');
+    stateRef.on('value',onState,function(e){netErr(e)});
+    liveRef.on('value',onLive);
+  }
+  function leaveLocal(){
+    if(stateRef)stateRef.off();if(liveRef)liveRef.off();
+    stateRef=liveRef=null;online=false;room=null;remoteRolling=false;
+    try{localStorage.removeItem(ROOMKEY)}catch(e){}
+    document.body.classList.remove('spectate');
+    var su=S.setup;S=fresh();S.setup=su;
+    $('sheet').hidden=true;resetDice();place();mode='online';netMsg('');showSetup();
+  }
+  // 방에서 나가기: 내 자리를 빼고 차례를 맞춰 둔다. 마지막 사람이 나가면 방이 지워진다
+  function leaveRoom(){
+    var ref=stateRef,uid=myUid,code=room;
+    leaveLocal();
+    if(!ref)return;
+    ref.transaction(function(cur){
+      if(!cur||!cur.players)return cur;
+      var idx=-1;cur.players.forEach(function(pl,i){if(pl.id===uid)idx=i});
+      if(idx<0)return cur;
+      cur.players.splice(idx,1);
+      if(!cur.players.length)return null;
+      if(cur.started){
+        if(idx<cur.turn)cur.turn--;
+        else if(idx===cur.turn){cur.vals=[0,0,0,0,0];cur.held=null;cur.rollsLeft=3}
+        if(cur.turn>=cur.players.length)cur.turn=0;
+      }
+      cur.by=uid;cur.seq=(cur.seq||0)+1;
+      return cur;
+    }).then(function(res){if(res&&res.snapshot&&!res.snapshot.exists())db.ref('rooms/'+code).remove()}).catch(function(){});
+  }
+  function showLobby(){
+    $('lobbyCode').textContent=room;
+    $('lobbyList').innerHTML=S.players.map(function(pl,i){return '<li>'+esc(pl.name)+(pl.id===myUid?' (나)':'')+(i===0?'<span>방장</span>':'')+'</li>'}).join('');
+    var host=!!S.players[0]&&S.players[0].id===myUid;
+    $('btnLobbyStart').hidden=!host;$('lobbyWait').hidden=host;
+    $('setup').hidden=false;setMode('lobby');
+  }
+  function myNick(){
+    var n=$('myName').value.trim()||'플레이어';
+    try{localStorage.setItem(NAMEKEY,n)}catch(e){}
+    return n;
+  }
+  function tryCreate(name,left){
+    var code=String(10000+Math.floor(Math.random()*90000)),ref=db.ref('rooms/'+code+'/state');
+    return ref.get().then(function(sn){
+      if(sn.exists()){if(left<=0)throw new Error('busy');return tryCreate(name,left-1)}
+      return ref.set({started:false,players:[{id:myUid,name:name}],turn:0,by:myUid,seq:1}).then(function(){attach(code)});
+    });
+  }
+  $('mLocal').addEventListener('click',function(){setMode('local')});
+  $('mOnline').addEventListener('click',function(){setMode('online')});
+  $('btnCreate').addEventListener('click',function(){
+    var name=myNick();netMsg('방을 만드는 중…');
+    net().then(function(){return tryCreate(name,5)}).then(function(){netMsg('')}).catch(netErr);
+  });
+  $('btnJoin').addEventListener('click',function(e){
+    e.preventDefault();
+    var name=myNick(),code=$('roomCode').value.replace(/\D/g,'');
+    if(code.length!==5){netMsg('방 코드 5자리를 입력해 주세요');return}
+    netMsg('입장하는 중…');
+    var ref;
+    net().then(function(){ref=db.ref('rooms/'+code+'/state');return ref.get()}).then(function(sn){
+      if(!sn.exists()){netMsg('그 코드의 방이 없어요');return}
+      return ref.transaction(function(cur){
+        if(!cur)return cur;
+        cur.players=cur.players||[];
+        if(cur.players.some(isMe))return cur;
+        if(cur.started||cur.players.length>=MAXP)return;
+        cur.players.push({id:myUid,name:name});
+        cur.by=myUid;cur.seq=(cur.seq||0)+1;
+        return cur;
+      }).then(function(res){
+        var st=res.snapshot.val();
+        if(st&&(st.players||[]).some(isMe)){netMsg('');attach(code)}
+        else netMsg(st&&st.started?'이미 시작된 방이에요':'방이 가득 찼어요');
+      });
+    }).catch(netErr);
+  });
+  $('btnLobbyStart').addEventListener('click',function(){
+    if(!online||!S.players[0]||S.players[0].id!==myUid)return;
+    S.started=true;S.turn=0;resetDice();$('setup').hidden=true;place();
+    forcePush=true;save();render();toast(P().name+' 차례예요');
+  });
+  $('btnLeave').addEventListener('click',leaveRoom);
+  try{$('myName').value=localStorage.getItem(NAMEKEY)||''}catch(e){}
+
   layoutDefault();place();
-  if(S.started)render();else showSetup();
+  var savedRoom=null;try{savedRoom=localStorage.getItem(ROOMKEY)}catch(e){}
+  if(savedRoom){
+    // 하던 온라인 방이 있으면 다시 접속한다
+    var keep0=S.setup;S=fresh();S.setup=keep0;mode='online';showSetup();netMsg('방 '+savedRoom+'에 다시 접속하는 중…');
+    net().then(function(){return db.ref('rooms/'+savedRoom+'/state').get()}).then(function(sn){
+      var st=sn.val();
+      if(st&&(st.players||[]).some(isMe)){netMsg('');attach(savedRoom)}
+      else{try{localStorage.removeItem(ROOMKEY)}catch(e){}netMsg('전에 하던 방이 끝났어요')}
+    }).catch(netErr);
+  }else if(S.started)render();else showSetup();
 })();
 </script>
