@@ -47,7 +47,10 @@ button:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
   background:radial-gradient(120% 90% at 50% 40%,var(--felt),var(--felt-deep));
   box-shadow:inset 0 0 40px rgba(0,0,0,.45);display:flex;flex-direction:column}
 #tray{flex:1;display:flex;flex-wrap:wrap;gap:calc(var(--d)*.32);align-content:center;justify-content:center;padding:14px}
-.status{margin:0;padding:0 12px 12px;text-align:center;font-size:13.5px;color:var(--ivory-dim);min-height:2.9em;text-wrap:balance;word-break:keep-all}
+.sensor{align-self:center;margin:0 12px 12px;padding:7px 14px;border-radius:999px;border:1px solid var(--line);font-size:12.5px;color:var(--ivory-dim)}
+.sensor.ask{background:var(--brass);color:var(--ink);border-color:var(--brass);font-size:14px;padding:10px 18px}
+.sensor.on{color:var(--brass)}
+.status{margin:0;padding:0 12px 8px;text-align:center;font-size:13.5px;color:var(--ivory-dim);min-height:2.9em;text-wrap:balance;word-break:keep-all}
 
 .die{width:var(--d);height:var(--d);flex:none;border-radius:20%;background:var(--ivory);
   box-shadow:inset 0 calc(var(--d)*-.07) 0 rgba(0,0,0,.16),0 calc(var(--d)*.08) calc(var(--d)*.14) rgba(0,0,0,.5);
@@ -137,6 +140,7 @@ button:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
     <div class="tray">
       <div id="tray"></div>
       <p class="status" id="status"></p>
+      <button class="sensor" id="sensor"></button>
     </div>
   </div>
 
@@ -287,28 +291,39 @@ button:focus-visible{outline:3px solid var(--brass);outline-offset:2px}
   }
 
   // 흔들기 감지
-  var hits=[];
+  var hits=[],listening=false,denied=false;
+  var needAsk=typeof DeviceMotionEvent!=='undefined'&&typeof DeviceMotionEvent.requestPermission==='function';
+  function sensorUI(){
+    var el=$('sensor'),t,c='sensor';
+    if(sensorOk){t='흔들기 센서 켜짐';c+=' on'}
+    else if(typeof DeviceMotionEvent==='undefined'){t='이 기기는 흔들기 센서가 없어요 · 버튼으로 굴리세요'}
+    else if(denied){t='센서가 거부됨 · 브라우저를 완전히 닫았다 다시 열어 허용하세요'}
+    else if(needAsk&&!listening){t='여기를 눌러 흔들기 센서 허용';c+=' ask'}
+    else{t='흔들기 센서 확인 중… 안 되면 버튼으로 굴리세요'}
+    el.textContent=t;el.className=c;
+  }
   function onMotion(e){
-    var a=e.acceleration,mag;
-    if(a&&a.x!=null){mag=Math.sqrt(a.x*a.x+a.y*a.y+a.z*a.z);sensorOk=true;if(mag<12)return}
-    else{a=e.accelerationIncludingGravity;if(!a||a.x==null)return;sensorOk=true;
-      mag=Math.abs(Math.sqrt(a.x*a.x+a.y*a.y+a.z*a.z)-9.81);if(mag<7)return}
+    var a=e.acceleration,g=e.accelerationIncludingGravity,strong=false,seen=false;
+    if(a&&a.x!=null){seen=true;if(Math.sqrt(a.x*a.x+a.y*a.y+a.z*a.z)>8)strong=true}
+    if(g&&g.x!=null){seen=true;if(Math.abs(Math.sqrt(g.x*g.x+g.y*g.y+g.z*g.z)-9.81)>5)strong=true}
+    if(seen&&!sensorOk){sensorOk=true;sensorUI();if(!rolling)render()}
+    if(!strong)return;
     var now=Date.now();
     if(rolling){lastMotion=now;return}
     if(now<quietUntil)return;
-    hits=hits.filter(function(t){return now-t<500});hits.push(now);
-    if(hits.length>=3){hits=[];lastMotion=now;beginRoll(false,true)}
+    hits=hits.filter(function(t){return now-t<700});hits.push(now);
+    if(hits.length>=2){hits=[];lastMotion=now;beginRoll(false,true)}
   }
-  var listening=false;
-  function listen(){if(listening)return;listening=true;window.addEventListener('devicemotion',onMotion)}
-  var needAsk=typeof DeviceMotionEvent!=='undefined'&&typeof DeviceMotionEvent.requestPermission==='function';
-  if(!needAsk)listen();
-  // 아이폰은 화면을 한 번 눌러야 흔들기 센서 허용 창이 뜬다
-  document.addEventListener('click',function ask(){
-    document.removeEventListener('click',ask);
-    if(!needAsk)return;
-    DeviceMotionEvent.requestPermission().then(function(r){if(r==='granted')listen();else toast('흔들기 센서가 꺼져 있어 버튼으로 굴립니다')}).catch(function(){});
-  });
+  function listen(){if(listening)return;listening=true;window.addEventListener('devicemotion',onMotion);sensorUI()}
+  // 아이폰은 화면을 눌러야 흔들기 센서 허용 창이 뜬다
+  function askSensor(){
+    if(!needAsk||listening)return;
+    DeviceMotionEvent.requestPermission().then(function(r){
+      if(r==='granted'){denied=false;listen()}else{denied=true;sensorUI()}
+    }).catch(function(){sensorUI()});
+  }
+  if(needAsk){document.addEventListener('click',askSensor)}else if(typeof DeviceMotionEvent!=='undefined'){listen()}
+  sensorUI();
 
   $('btnRoll').addEventListener('click',function(){lastMotion=0;beginRoll(false)});
   $('btnHeart').addEventListener('click',function(){lastMotion=0;beginRoll(true)});
