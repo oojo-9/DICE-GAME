@@ -54,6 +54,10 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .chip.cur{background:var(--brass);border-color:var(--brass);color:var(--ink)}
 .chip.view{border-color:var(--ivory);color:var(--ivory)}
 
+.avail{flex:none;height:42px;display:flex;align-items:center;gap:6px;overflow-x:auto;scrollbar-width:none;font-size:12.5px;color:var(--ivory-dim)}
+.avail::-webkit-scrollbar{display:none}
+.avail button{flex:none;display:flex;align-items:baseline;gap:6px;height:36px;padding:0 12px;border-radius:10px;border:1.5px solid rgba(224,170,69,.7);font-size:13.5px;color:var(--ivory);white-space:nowrap}
+.avail button b{font-family:var(--display);font-weight:400;font-size:17px;color:var(--brass);font-variant-numeric:tabular-nums}
 .board{flex:1;min-height:0;display:flex;gap:10px}
 .keepwrap{flex:none;display:flex;flex-direction:column;gap:6px;align-items:center;padding:8px 8px 10px;border-radius:14px;background:rgba(0,0,0,.28);border:1px solid var(--line)}
 .keepwrap b{font-family:var(--display);font-weight:400;font-size:14px;letter-spacing:.2em;color:var(--brass);padding-left:.2em}
@@ -181,6 +185,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     <div class="meter"><span id="left">남은 흔들기 3번</span><div class="lamps" id="lamps"><i></i><i></i><i></i></div></div>
   </div>
   <div class="turns" id="turns"></div>
+  <div class="avail" id="avail" aria-label="지금 등록할 수 있는 항목"></div>
 
   <div class="board">
     <div class="keepwrap">
@@ -333,6 +338,14 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     [].forEach.call($('lamps').children,function(l,i){l.classList.toggle('off',i>=S.rollsLeft)});
     $('turns').innerHTML=chips(over?-1:S.turn);
     var cur=$('turns').querySelector('.cur');if(cur&&cur.scrollIntoView)cur.scrollIntoView({block:'nearest',inline:'nearest'});
+    // 지금 주사위로 점수가 나는 빈 칸을 점수 높은 순으로
+    var av='';
+    if(!over&&!rolling&&rolled()){
+      var list=ALL.filter(function(c){return !(c.id in p.scores)}).map(function(c){return {c:c,v:c.fn(S.vals)}})
+        .filter(function(x){return x.v>0}).sort(function(a,b){return b.v-a.v});
+      av=list.length?list.map(function(x){return '<button data-id="'+x.c.id+'">'+x.c.name+'<b>'+x.v+'</b></button>'}).join(''):'점수가 나는 칸이 없어요';
+    }else if(!over&&!rolling){av='흔들면 등록할 수 있는 항목이 여기에 나와요'}
+    $('avail').innerHTML=av;$('avail').scrollLeft=0;
     $('btnRoll').disabled=rolling||over||S.rollsLeft===0;
     $('btnHeart').disabled=rolling||over||S.rollsLeft===0||S.held.length===0;
     $('btnScore').classList.toggle('nudge',!over&&rolled()&&S.rollsLeft===0);
@@ -491,6 +504,10 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   function resetDice(){S.vals=[0,0,0,0,0];S.held=[];S.rollsLeft=3;selected=null;for(var i=0;i<5;i++)setFace(i,0)}
 
   $('btnScore').addEventListener('click',openSheet);
+  $('avail').addEventListener('click',function(e){
+    var b=e.target.closest('button[data-id]');if(!b||rolling)return;
+    openSheet();selected=b.dataset.id;renderSheet();
+  });
   $('btnClose').addEventListener('click',closeSheet);
   $('scroll').addEventListener('click',function(e){
     var r=e.target.closest('button[data-id]');if(!r)return;
