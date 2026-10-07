@@ -108,6 +108,9 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .face[data-f="5"] i:is(:nth-child(1),:nth-child(3),:nth-child(5),:nth-child(7),:nth-child(9)),
 .face[data-f="6"] i:is(:nth-child(1),:nth-child(3),:nth-child(4),:nth-child(6),:nth-child(7),:nth-child(9)){opacity:1}
 .face.side i{opacity:0!important}
+/* 옆면 음영은 filter 대신 배경을 덧칠한다 (사파리에서 filter를 쓴 면이 정면을 덮어 눈이 안 보이던 문제) */
+.face.sh1{background-image:linear-gradient(rgba(0,0,0,.18),rgba(0,0,0,.18))}
+.face.sh2{background-image:linear-gradient(rgba(0,0,0,.34),rgba(0,0,0,.34))}
 .face.flat{--c:30px;position:relative;inset:auto;flex:none;width:var(--c);height:var(--c);border-radius:20%}
 #keep .die{background:rgba(224,170,69,.2);box-shadow:0 0 0 2px var(--brass)}
 #keep .die::after{display:none}
@@ -149,7 +152,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .card .nm{display:block;font-size:13.5px;white-space:nowrap}
 .card .mx{position:absolute;right:6px;top:8px;font-size:10px;letter-spacing:-.02em;color:var(--brass);white-space:nowrap}
 .card .rl{display:block;font-size:10.5px;color:var(--ivory-dim);white-space:nowrap}
-.card td{font-family:var(--display);font-size:19px;color:var(--ivory)}
+.card td{font-family:var(--body);font-size:19px;font-variant-numeric:tabular-nums;color:var(--ivory)}
 .card td.cur{background:rgba(224,170,69,.1)}
 .card td small{font-family:var(--body);font-size:11px;color:var(--ivory-dim)}
 .card td.open{padding:3px}
@@ -418,7 +421,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 (function(){
   // 배포 도장. 커밋할 때 자동으로 바뀐다. 열려 있는 화면이 예전 버전이면 스스로 새로 받아 온다
   // (온라인에서 기기마다 버전이 다르면 알림 문구 같은 것이 어긋난다)
-  var BUILD='20261007-231526';
+  var BUILD='20261008-000753';
   function checkUpdate(){
     if(location.protocol==='file:')return;
     fetch(location.pathname+'?_='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){
@@ -514,7 +517,8 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     [].forEach.call(cubes[i].children,function(f){
       var n=+f.dataset.f;
       f.classList.toggle('side',on&&n!==front);
-      f.style.filter=!on||n===front?'':n===right?'brightness(.66)':'brightness(.82)';
+      f.classList.toggle('sh1',on&&n!==front&&n!==right);
+      f.classList.toggle('sh2',on&&n!==front&&n===right);
     });
   }
   // 아직 굴리기 전(v=0)에는 아무 면이나 보이게 놓아 둔다. 옆면 눈도 그대로 보여서 '결과'와 구분된다
@@ -818,12 +822,14 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   }
 
   // 흔들기 버튼: 누르고 있는 동안 점점 세게 흔들리고, 떼면 그 세기로 던져진다
+  var MINKICK=900;
   function release(){
     if(!holding)return;
     var ch=Math.min(1,(Date.now()-holdStart)/1500);
     holding=false;releasedAt=Date.now();
     $('btnRoll').style.setProperty('--p','0%');
-    kick(320+1250*ch);
+    // 살짝만 눌렀다 떼도 눈이 충분히 섞이도록 최소 세기를 둔다 (약하면 제자리에서 같은 면으로 다시 눕는다)
+    kick(MINKICK+(1570-MINKICK)*ch);
     render();
   }
 
@@ -849,7 +855,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     if(rolling){lastMotion=now;if(!holding&&now-lastKick>80){lastKick=now;kick(a&&a.x!=null?Math.min(30,Math.sqrt(a.x*a.x+a.y*a.y+a.z*a.z))*26:320)}return}
     if(now<quietUntil)return;
     hits=hits.filter(function(t){return now-t<700});hits.push(now);
-    if(hits.length>=2){hits=[];lastMotion=now;if(beginRoll(true)){lastKick=now;kick(450)}}
+    if(hits.length>=2){hits=[];lastMotion=now;if(beginRoll(true)){lastKick=now;kick(MINKICK)}}
   }
   function listen(){if(listening)return;listening=true;window.addEventListener('devicemotion',onMotion);sensorUI()}
   // 아이폰은 화면을 눌러야 흔들기 센서 허용 창이 뜬다
@@ -886,7 +892,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   $('btnRoll').addEventListener('contextmenu',function(e){e.preventDefault()});
   $('btnRoll').addEventListener('keydown',function(e){
     if((e.key!=='Enter'&&e.key!==' ')||e.repeat)return;
-    e.preventDefault();lastMotion=0;if(beginRoll(false))kick(800);
+    e.preventDefault();lastMotion=0;if(beginRoll(false))kick(MINKICK);
   });
   // 야수의심장: 고정한 주사위를 전부 판으로 되돌리기만 한다. 굴리는 건 흔들어야 한다
   $('btnHeart').addEventListener('click',function(){
@@ -898,7 +904,9 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   // 점수판
   function renderSheet(){
     var over=gameOver(),can=!over&&rolled()&&myTurn(),ps=S.players,h='',w=over?winners():null;
-    var hi=function(i){return over?total(ps[i])===w.score:i===S.turn};
+    // 색은 차례와 상관없이 내 줄에. 한 기기에서 여럿이 돌려 가며 할 때는 '나'가 없으니 지금 차례인 줄에
+    var humans=ps.filter(function(p){return !p.ai}),me=online?ps.filter(isMe)[0]:humans.length===1?humans[0]:null,mine=me?ps.indexOf(me):S.turn;
+    var hi=function(i){return over?total(ps[i])===w.score:i===mine};
     if(can){
       h+='<div class="now"><span>'+esc(P().name)+'의 주사위</span>'+S.vals.map(function(v){return '<span class="face flat" data-f="'+v+'">'+PIPS+'</span>'}).join('')+'</div>';
     }
