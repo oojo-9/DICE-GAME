@@ -977,7 +977,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   $('askYes').addEventListener('click',function(){answer('ok')});
   $('askNo').addEventListener('click',function(){answer('no')});
 
-  // 차례 넘기기: 차례인 사람이 접속이 끊긴 지 20초, 또는 접속 중인데 90초 동안 아무 움직임이 없으면
+  // 차례 넘기기: 차례인 사람이 접속이 끊긴 지 10초, 또는 접속 중인데 30초 동안 아무 움직임이 없으면
   // 다른 사람 화면에 버튼이 나타난다. 넘겨진 사람은 점수를 잃지 않고, 빈 칸은 나중에 채운다.
   // 단, 빈 칸이 남은 사람이 그 사람뿐이면 남은 칸을 0점으로 채우고 게임을 끝낸다
   var presRef=null,connRef=null,pres={},lastAct=0,absentAt=0,skipArmed=false,skipArmT=0;
@@ -990,8 +990,8 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     var b=$('btnSkip');
     if(!online||!S.started||gameOver()||myTurn()||!P()){b.hidden=true;skipArmed=false;return}
     var now=Date.now(),here=!!pres[P().id],show;
-    if(here){absentAt=0;show=now-lastAct>90000}
-    else{absentAt=absentAt||now;show=now-absentAt>20000}
+    if(here){absentAt=0;show=now-lastAct>30000}
+    else{absentAt=absentAt||now;show=now-absentAt>10000}
     b.hidden=!show;
     if(show&&!skipArmed)b.textContent=P().name+'님 '+(here?'응답 없음':'접속 끊김')+' · 차례 넘기기';
   }
