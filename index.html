@@ -52,7 +52,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 
 .bar{flex:none;display:flex;align-items:center;gap:6px}
 .bar .turns{flex:1;min-width:0}
-.mini{flex:none;height:34px;padding:0 11px;border-radius:9px;border:1px solid var(--line);font-size:12.5px;color:var(--ivory-dim);white-space:nowrap}
+.mini{flex:none;height:34px;padding:0 9px;border-radius:9px;border:1px solid var(--line);font-size:12.5px;color:var(--ivory-dim);white-space:nowrap}
 .mini.arm{background:var(--heart);border-color:var(--heart);color:var(--ivory)}
 .turns{flex:none;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
 .turns::-webkit-scrollbar{display:none}
@@ -79,6 +79,8 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     repeating-linear-gradient(87deg,rgba(255,225,175,.07) 0 3px,transparent 3px 21px),
     linear-gradient(180deg,var(--wood),#a17040);
   box-shadow:inset 0 10px 24px 2px rgba(0,0,0,.5),inset 0 -2px 6px rgba(255,230,190,.18),0 0 0 1px #3b2513,0 6px 14px rgba(0,0,0,.5)}
+#tray.photo{background:var(--felt) center/cover no-repeat;border-color:#0d0f13;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12),0 6px 14px rgba(0,0,0,.5)}
+#tray.photo .die::after{background:rgba(0,0,0,.6)}
 #tray .die{position:absolute;left:0;top:0;will-change:left,top}
 .status{margin:0;padding:0 4px;text-align:center;font-size:13.5px;color:var(--ivory-dim);min-height:2.9em;text-wrap:balance;word-break:keep-all}
 .status b{color:var(--brass);font-weight:400}
@@ -190,7 +192,9 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   </div>
   <div class="bar">
     <div class="turns" id="turns"></div>
-    <button class="mini" id="btnSave">임시저장</button>
+    <button class="mini" id="btnPhoto">배경 찍기</button>
+    <input id="photoInput" type="file" accept="image/*" capture="environment" hidden>
+    <button class="mini" id="btnSave">저장</button>
     <button class="mini" id="btnReset">리셋</button>
   </div>
   <div class="avail" id="avail" aria-label="지금 등록할 수 있는 항목"></div>
@@ -625,6 +629,26 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   $('btnSave').addEventListener('click',function(){
     if(rolling)return;
     toast(save()?'임시저장했어요. 다시 들어오면 이어서 할 수 있어요':'이 브라우저에서는 저장할 수 없어요');
+  });
+  // 배경 찍기: 카메라로 찍은 사진을 판 배경으로 쓴다. 어디에도 저장하지 않아서 창을 닫으면 사라진다
+  var photoUrl=null;
+  function setPhoto(url){
+    if(photoUrl)URL.revokeObjectURL(photoUrl);
+    photoUrl=url;
+    tray.classList.toggle('photo',!!url);
+    tray.style.backgroundImage=url?'url("'+url+'")':'';
+    $('btnPhoto').textContent=url?'나무판':'배경 찍기';
+  }
+  $('btnPhoto').addEventListener('click',function(){
+    if(rolling)return;
+    if(photoUrl){setPhoto(null);return}
+    $('photoInput').value='';$('photoInput').click();
+  });
+  $('photoInput').addEventListener('change',function(e){
+    var f=e.target.files&&e.target.files[0];
+    if(!f)return;
+    if(!/^image\//.test(f.type)){toast('사진만 배경으로 쓸 수 있어요');return}
+    setPhoto(URL.createObjectURL(f));
   });
   var resetArmed=false,resetT=0;
   function disarmReset(){resetArmed=false;clearTimeout(resetT);$('btnReset').textContent='리셋';$('btnReset').classList.remove('arm')}
