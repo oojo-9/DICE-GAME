@@ -50,9 +50,8 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .lamps i{width:22px;height:8px;border-radius:4px;background:var(--brass);transition:background .25s}
 .lamps i.off{background:var(--line)}
 
-.bar{flex:none;display:flex;align-items:center;gap:6px}
-.bar .turns{flex:1;min-width:0}
-.mini{flex:none;height:34px;padding:0 9px;border-radius:9px;border:1px solid var(--line);font-size:12.5px;color:var(--ivory-dim);white-space:nowrap}
+.tools{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.mini{min-width:0;height:38px;padding:0 6px;border-radius:9px;border:1px solid var(--line);font-size:12.5px;color:var(--ivory-dim);white-space:nowrap}
 .mini.arm{background:var(--heart);border-color:var(--heart);color:var(--ivory)}
 .turns{flex:none;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
 .turns::-webkit-scrollbar{display:none}
@@ -126,7 +125,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .btn.score.nudge{animation:nudge 1.1s ease-in-out infinite}
 @keyframes nudge{50%{background:rgba(244,236,216,.2)}}
 
-.toast{position:fixed;left:50%;bottom:calc(210px + env(safe-area-inset-bottom,0px));translate:-50% 0;max-width:calc(100% - 48px);
+.toast{position:fixed;left:50%;bottom:calc(256px + env(safe-area-inset-bottom,0px));translate:-50% 0;max-width:calc(100% - 48px);
   background:var(--ink);color:var(--ivory);padding:10px 16px;border-radius:999px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:30;text-align:center}
 .toast.on{opacity:1}
 
@@ -190,13 +189,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     <h1>야츄<small id="round"></small></h1>
     <div class="meter"><span id="left">남은 흔들기 3번</span><div class="lamps" id="lamps"><i></i><i></i><i></i></div></div>
   </div>
-  <div class="bar">
-    <div class="turns" id="turns"></div>
-    <button class="mini" id="btnPhoto">배경 찍기</button>
-    <input id="photoInput" type="file" accept="image/*" capture="environment" hidden>
-    <button class="mini" id="btnSave">저장</button>
-    <button class="mini" id="btnReset">리셋</button>
-  </div>
+  <div class="turns" id="turns"></div>
   <div class="avail" id="avail" aria-label="지금 등록할 수 있는 항목"></div>
 
   <div class="board">
@@ -218,6 +211,12 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     <button class="btn roll" id="btnRoll">흔들기<small>길게 누를수록 세게 굴러요</small></button>
     <button class="btn heart" id="btnHeart">야수의심장</button>
     <button class="btn score" id="btnScore">점수확인</button>
+    <div class="tools">
+      <button class="mini" id="btnPhoto">배경 찍기</button>
+      <input id="photoInput" type="file" accept="image/*" capture="environment" hidden>
+      <button class="mini" id="btnSave">임시저장</button>
+      <button class="mini" id="btnReset">리셋</button>
+    </div>
   </div>
 </div>
 
