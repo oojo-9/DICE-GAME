@@ -70,13 +70,13 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .sensor.ask{background:var(--brass);color:var(--ink);border-color:var(--brass);font-size:14px;padding:10px 18px}
 .sensor.on{color:var(--brass)}
 
-/* 주사위: 정육면체를 비스듬히 내려다본 모양(윤곽이 육각형). 정면이 나온 눈 */
+/* 주사위: 정육면체를 살짝 비스듬히 본 모양. 멈추면 정면(나온 눈)에만 눈이 보이고 옆면은 비워서 헷갈리지 않게 한다 */
 .die{width:var(--d);height:var(--d);flex:none;position:relative;display:grid;place-items:center;cursor:pointer;
   perspective:calc(var(--d)*8);border-radius:18%;transition:opacity .2s}
 .die::after{content:"";position:absolute;left:12%;right:12%;bottom:0;height:14%;border-radius:50%;background:rgba(0,0,0,.5);filter:blur(5px);z-index:-1}
 .die.blank{opacity:.3}
 .die.blank .face i{opacity:0!important}
-.cube{--c:calc(var(--d)*.66);width:var(--c);height:var(--c);position:relative;transform-style:preserve-3d;transform:rotateX(-28deg) rotateY(-32deg)}
+.cube{--c:calc(var(--d)*.72);width:var(--c);height:var(--c);position:relative;transform-style:preserve-3d;transform:rotateX(-17deg) rotateY(-19deg)}
 .face{position:absolute;inset:0;background:var(--ivory);border-radius:11%;display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);
   padding:calc(var(--c)*.13);box-shadow:inset 0 0 0 1px rgba(0,0,0,.16);backface-visibility:hidden;-webkit-backface-visibility:hidden}
 .face i{place-self:center;width:calc(var(--c)*.17);height:calc(var(--c)*.17);border-radius:50%;background:var(--ink);opacity:0}
@@ -92,6 +92,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .face[data-f="4"] i:is(:nth-child(1),:nth-child(3),:nth-child(7),:nth-child(9)),
 .face[data-f="5"] i:is(:nth-child(1),:nth-child(3),:nth-child(5),:nth-child(7),:nth-child(9)),
 .face[data-f="6"] i:is(:nth-child(1),:nth-child(3),:nth-child(4),:nth-child(6),:nth-child(7),:nth-child(9)){opacity:1}
+.face.side i{opacity:0!important}
 .face.flat{--c:30px;position:relative;inset:auto;flex:none;width:var(--c);height:var(--c);border-radius:20%}
 #keep .die{background:rgba(224,170,69,.2);box-shadow:0 0 0 2px var(--brass)}
 #keep .die::after{display:none}
@@ -267,7 +268,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   var tray=$('tray'),keep=$('keep'),dice=[],cubes=[],spins=[],rolling=false,rollTargets=[],rollStart=0,lastMotion=0,quietUntil=0,ticker=0,sensorOk=false,selected=null,newArmed=false,viewing=0;
 
   // 정육면체: 마주 보는 면의 합은 7. 정면에 눈 v가 오도록 돌리는 각도와, 그때 위/오른쪽에 보이는 면
-  var TILT='rotateX(-28deg) rotateY(-32deg) ';
+  var TILT='rotateX(-17deg) rotateY(-19deg) ';
   var ORI={1:[0,0],2:[-90,0],3:[0,-90],4:[0,90],5:[90,0],6:[0,180]};
   var SIDES={1:[2,3],2:[6,3],3:[2,6],4:[2,1],5:[1,3],6:[2,4]};
   function tf(v,ex,ey){var o=ORI[v||1];return TILT+'rotateX('+(o[0]+(ex||0))+'deg) rotateY('+(o[1]+(ey||0))+'deg)'}
@@ -275,7 +276,8 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     var s=v?SIDES[v]:null;
     [].forEach.call(cubes[i].children,function(f){
       var n=+f.dataset.f;
-      f.style.filter=!s?'':n===s[1]?'brightness(.74)':n===v?'brightness(.95)':'';
+      f.classList.toggle('side',!!s&&n!==v);
+      f.style.filter=!s||n===v?'':n===s[1]?'brightness(.66)':'brightness(.82)';
     });
   }
   function setFace(i,v){cubes[i].style.transform=tf(v);shade(i,v||1)}
