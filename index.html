@@ -192,6 +192,10 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .modes{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:4px;border-radius:14px;background:rgba(0,0,0,.35)}
 .modes button{height:42px;border-radius:10px;font-size:13.5px;white-space:nowrap;color:var(--ivory-dim)}
 .modes button.on{background:var(--ivory);color:var(--ink)}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center}
+.stats div{display:flex;flex-direction:column;gap:3px;padding:9px 4px;border:1px solid var(--line);border-radius:12px}
+.stats span{font-size:11.5px;color:var(--ivory-dim)}
+.stats b{font-family:var(--display);font-weight:400;font-size:16px;color:var(--brass);font-variant-numeric:tabular-nums;white-space:nowrap}
 .box{display:flex;flex-direction:column;gap:16px}
 .box .hint{margin:0;font-size:13px;color:var(--ivory-dim);text-align:center}
 .join button{flex:none;height:48px;padding:0 20px;border-radius:12px;border:1.5px solid var(--ivory);font-family:var(--display);font-size:17px}
@@ -279,6 +283,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
       <button id="mOnline">온라인</button>
       <button id="mAi">AI랑 대결</button>
     </div>
+    <div class="stats" id="stats" aria-label="내 전적"></div>
     <div class="box" id="localBox">
       <div class="count">
         <span>몇 명이서 하나요?</span>
@@ -319,7 +324,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 (function(){
   // 배포 도장. 커밋할 때 자동으로 바뀐다. 열려 있는 화면이 예전 버전이면 스스로 새로 받아 온다
   // (온라인에서 기기마다 버전이 다르면 알림 문구 같은 것이 어긋난다)
-  var BUILD='20261007-171709';
+  var BUILD='20261007-172703';
   function checkUpdate(){
     if(location.protocol==='file:')return;
     fetch(location.pathname+'?_='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){
@@ -489,6 +494,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   function render(){
     if(!S.started)return;
     var over=gameOver(),p=P(),mine=myTurn();
+    if(over)tally();
     document.body.classList.toggle('spectate',online&&!mine);
     if(!resetArmed)$('btnReset').textContent=online?'방 나가기':'리셋';
     dice.forEach(function(el,i){
@@ -551,6 +557,31 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
       g.globalAlpha=1;
       if(el<3400)partyRaf=requestAnimationFrame(frame);else box.hidden=true;
     })(t0);
+  }
+
+  // 내 전적: 이 휴대폰에만 저장한다. AI 대결과 온라인만 센다 (한 기기로 할 때는 누가 '나'인지 알 수 없다)
+  var STATKEY='yachu-stats',stats={ai:{w:0,l:0,d:0},online:{w:0,l:0,d:0},best:0,done:[]};
+  try{var st0=JSON.parse(localStorage.getItem(STATKEY));if(st0&&st0.ai&&st0.online){stats=st0;stats.done=stats.done||[]}}catch(e){}
+  function recText(o){return o.w+'승 '+o.l+'패'+(o.d?' '+o.d+'무':'')}
+  function showStats(){
+    $('stats').innerHTML='<div><span>AI 대결</span><b>'+recText(stats.ai)+'</b></div><div><span>온라인</span><b>'+recText(stats.online)+'</b></div><div><span>내 최고 점수</span><b>'+(stats.best||'–')+'</b></div>';
+  }
+  // 게임이 끝나면 한 번만 센다 (같은 게임을 다시 열어도 또 세지 않게 게임마다 표식을 남긴다)
+  function tally(){
+    if(!S.started||!gameOver()||S.players.length<2)return;
+    var m=online?'online':S.players.some(function(pl){return pl.ai})?'ai':null;
+    if(!m)return;
+    var me=online?S.players.filter(isMe)[0]:S.players.filter(function(pl){return !pl.ai})[0];
+    if(!me)return;
+    var key=m+':'+(online?room:'')+':'+(S.gid||0);
+    if(stats.done.indexOf(key)>=0)return;
+    var mine=total(me),top=Math.max.apply(null,S.players.filter(function(pl){return pl!==me}).map(total));
+    var r=mine>top?'w':mine<top?'l':'d';
+    stats[m][r]++;if(mine>stats.best)stats.best=mine;
+    stats.done.push(key);if(stats.done.length>30)stats.done.shift();
+    try{localStorage.setItem(STATKEY,JSON.stringify(stats))}catch(e){}
+    showStats();
+    toast((r==='w'?'승리! ':r==='l'?'패배… ':'무승부 · ')+(m==='ai'?'AI 대결 ':'온라인 ')+recText(stats[m]));
   }
 
   var toastT=0;
@@ -865,7 +896,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     newArmed=false;
     if(online){
       // 온라인: 같은 방, 같은 사람들로 점수만 지우고 다시 시작
-      S.players.forEach(function(p){p.scores={}});S.turn=0;S.last=null;resetDice();place();
+      S.players.forEach(function(p){p.scores={}});S.turn=0;S.last=null;S.gid=Date.now();resetDice();place();
       forcePush=true;save();closeSheet();render();toast('새 게임을 시작했어요');return;
     }
     S.started=false;save();closeSheet();showSetup();
@@ -887,7 +918,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     $('mAi').classList.toggle('on',m==='ai');
     $('mLocal').classList.toggle('on',m==='local');$('mOnline').classList.toggle('on',m==='online');
   }
-  function showSetup(){renderNames();setMode(mode==='lobby'?'online':mode);$('setup').hidden=false}
+  function showSetup(){renderNames();showStats();setMode(mode==='lobby'?'online':mode);$('setup').hidden=false}
   $('btnMinus').addEventListener('click',function(){setCount(S.setup.n-1)});
   $('btnPlus').addEventListener('click',function(){setCount(S.setup.n+1)});
   $('names').addEventListener('input',function(e){
@@ -972,7 +1003,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     var n=$('aiName').value.trim()||'나';
     try{localStorage.setItem('yachu-name',n)}catch(e){}
     S.players=[{name:n,scores:{}},{name:'AI',scores:{},ai:true}];
-    S.turn=0;S.last=null;resetDice();S.started=true;
+    S.turn=0;S.last=null;S.gid=Date.now();resetDice();S.started=true;
     $('setup').hidden=true;place();render();save();
     toast(n+' 차례예요');
   });
@@ -1032,7 +1063,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   function push(){
     if(!stateRef)return;
     lastSeq++;pushedSeq=lastSeq;
-    stateRef.set({started:S.started,players:S.players,turn:S.turn,vals:S.vals,held:S.held,rollsLeft:S.rollsLeft,dice:diceOut(),last:S.last||null,yn:S.yn||null,v:BUILD,by:myUid,seq:lastSeq})
+    stateRef.set({started:S.started,players:S.players,turn:S.turn,vals:S.vals,held:S.held,rollsLeft:S.rollsLeft,dice:diceOut(),last:S.last||null,yn:S.yn||null,gid:S.gid||null,v:BUILD,by:myUid,seq:lastSeq})
       .catch(function(){toast('연결이 불안정해요. 다시 시도해 주세요')});
   }
   function isMe(pl){return pl.id===myUid}
@@ -1066,7 +1097,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     seenY=yn;
     S={started:!!st.started,
        players:(st.players||[]).map(function(pl){return {id:pl.id,name:pl.name,scores:pl.scores||{}}}),
-       turn:st.turn||0,vals:st.vals||[0,0,0,0,0],held:st.held||[],rollsLeft:st.rollsLeft==null?3:st.rollsLeft,last:st.last||null,yn:st.yn||null,setup:S.setup};
+       turn:st.turn||0,vals:st.vals||[0,0,0,0,0],held:st.held||[],rollsLeft:st.rollsLeft==null?3:st.rollsLeft,last:st.last||null,yn:st.yn||null,gid:st.gid||0,setup:S.setup};
     if(S.turn>=S.players.length)S.turn=0;
     remoteRolling=false;
     if(!S.players.some(isMe)){leaveLocal();netMsg('방에서 나왔어요');return}
@@ -1268,7 +1299,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   });
   $('btnLobbyStart').addEventListener('click',function(){
     if(!online||!S.players[0]||S.players[0].id!==myUid)return;
-    S.started=true;S.turn=0;resetDice();$('setup').hidden=true;place();
+    S.started=true;S.turn=0;S.gid=Date.now();resetDice();$('setup').hidden=true;place();
     forcePush=true;save();render();toast(P().name+' 차례예요');
   });
   $('btnLeave').addEventListener('click',leaveRoom);
