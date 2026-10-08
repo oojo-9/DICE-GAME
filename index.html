@@ -237,7 +237,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .lobbylist li span{color:var(--brass);font-size:13px}
 .box .mini{align-self:center;padding:0 18px}
 .sharerow{display:flex;justify-content:center;gap:8px}
-.sharerow .mini{flex:1 1 0;padding:0 8px}
+.sharerow .mini{flex:1 1 0;height:44px;padding:0 8px;font-size:14px;color:var(--ivory);border-color:var(--ivory-dim)}
 /* 온라인에서 남의 차례를 볼 때: 받아온 위치 사이를 부드럽게 잇는다 */
 .spectate #tray .die{transition:left .12s linear,top .12s linear}
 .spectate #tray .cube{transition:transform .12s linear}
@@ -424,7 +424,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 (function(){
   // 배포 도장. 커밋할 때 자동으로 바뀐다. 열려 있는 화면이 예전 버전이면 스스로 새로 받아 온다
   // (온라인에서 기기마다 버전이 다르면 알림 문구 같은 것이 어긋난다)
-  var BUILD='20261008-222820';
+  var BUILD='20261008-223039';
   function checkUpdate(){
     if(location.protocol==='file:')return;
     fetch(location.pathname+'?_='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){
@@ -1480,7 +1480,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   $('btnCopyCode').addEventListener('click',copyCode);
   $('lobbyCode').addEventListener('click',copyCode);
   // 기기의 공유 창을 띄운다(없는 브라우저에서는 초대 글을 복사). 링크의 ?room= 은 받는 쪽에서 방 코드 칸을 미리 채운다
-  var SHARELABEL=navigator.share?'카톡 등으로 초대 보내기':'초대 링크 복사';
+  var SHARELABEL=navigator.share?'카톡으로 초대':'초대 링크 복사';
   $('btnShare').textContent=SHARELABEL;
   $('btnShare').addEventListener('click',function(){
     if(!room)return;
