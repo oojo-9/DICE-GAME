@@ -240,6 +240,21 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .sharerow .mini{flex:1 1 0;height:44px;padding:0 8px;font-size:14px;color:var(--ivory);border-color:var(--ivory-dim)}
 /* 온라인에서 남의 차례를 볼 때: 받아온 위치 사이를 부드럽게 잇는다 */
 .spectate #tray .die{transition:left .12s linear,top .12s linear}
+.result{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:14px 12px}
+.result strong{font-family:var(--display);font-weight:400;font-size:52px;line-height:1;letter-spacing:.04em;color:var(--ivory)}
+.result span{font-size:13.5px;line-height:1.4;color:var(--ivory);word-break:keep-all}
+.result>b{font-family:var(--display);font-weight:400;font-size:20px;letter-spacing:.06em;color:var(--brass)}
+.result table{border-collapse:collapse;width:min(100%,300px);font-size:14px;color:var(--ivory)}
+.result td{padding:5px 8px;text-align:left;border-top:1px solid rgba(255,255,255,.14);white-space:nowrap}
+.result td:first-child{width:1%;font-family:var(--display);color:var(--brass)}
+.result td:nth-child(2){max-width:0;width:99%;overflow:hidden;text-overflow:ellipsis}
+.result td:last-child{text-align:right;font-variant-numeric:tabular-nums}
+.result tr.me td{background:rgba(224,170,69,.2)}
+.result.win strong{color:var(--brass)}
+.result.lose strong{color:var(--ivory-dim)}
+#tray .result{position:absolute;inset:0;z-index:4;pointer-events:none;background:rgba(10,11,14,.62)}
+#tray .result.rank{background:rgba(10,11,14,.84)}
+#tray .result strong{font-size:min(16vw,68px)}
 .say{flex:none;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
 .say::-webkit-scrollbar{display:none}
 .say button{flex:none;height:34px;padding:0 13px;border-radius:999px;border:1px solid var(--line);font-size:13px;color:var(--ivory);white-space:nowrap}
@@ -276,7 +291,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
       </div>
     </div>
     <div class="tray">
-      <div id="tray"></div>
+      <div id="tray"><div class="result" id="result" role="status" hidden></div></div>
       <p class="status" id="status"></p>
       <button class="sensor ask" id="btnSkip" hidden></button>
       <button class="sensor" id="sensor"></button>
@@ -435,7 +450,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 (function(){
   // 배포 도장. 커밋할 때 자동으로 바뀐다. 열려 있는 화면이 예전 버전이면 스스로 새로 받아 온다
   // (온라인에서 기기마다 버전이 다르면 알림 문구 같은 것이 어긋난다)
-  var BUILD='20261008-225109';
+  var BUILD='20261008-225644';
   function checkUpdate(){
     if(location.protocol==='file:')return;
     fetch(location.pathname+'?_='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){
@@ -559,6 +574,21 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   function gameOver(){return S.players.length>0&&S.players.every(function(p){return cnt(p)>=ALL.length})}
   function upperSum(p){return UPPER.reduce(function(a,c){return a+(p.scores[c.id]||0)},0)}
   function total(p){var t=ALL.reduce(function(a,c){return a+(p.scores[c.id]||0)},0);return t+(upperSum(p)>=BONUS_AT?BONUS:0)}
+  // 게임이 끝났을 때 보여 줄 결과. AI 대결은 둘뿐이라 WIN/LOSE를 크게, 온라인과 한 기기 여럿은 점수 순위표를 띄운다
+  function outcomeHtml(){
+    var ps=S.players,w=winners(),humans=ps.filter(function(p){return !p.ai}),me=online?ps.filter(isMe)[0]:humans.length===1?humans[0]:null;
+    if(ps.length<2)return {cls:'',html:'<strong>'+total(ps[0])+'점</strong><span>게임 끝</span>'};
+    if(!online&&me){
+      var r=total(me)<w.score?'lose':w.names.length>1?'draw':'win';
+      return {cls:r,html:'<strong>'+r.toUpperCase()+'</strong><span>'+ps.map(function(p){return esc(p.name)+' '+total(p)+'점'}).join(' · ')+'</span>'};
+    }
+    // 같은 점수는 같은 등수
+    var list=ps.slice().sort(function(x,y){return total(y)-total(x)}),rank=0;
+    return {cls:'rank',html:'<b>최종 순위</b><table>'+list.map(function(p,i){
+      if(!i||total(p)!==total(list[i-1]))rank=i+1;
+      return '<tr class="'+(p===me?'me':'')+'"><td>'+rank+'등</td><td>'+esc(p.name)+(p===me?' (나)':'')+'</td><td>'+total(p)+'점</td></tr>';
+    }).join('')+'</table>'};
+  }
   function winners(){var best=Math.max.apply(null,S.players.map(total));return {score:best,names:S.players.filter(function(p){return total(p)===best}).map(function(p){return p.name})}}
 
   // 쟁반 안 주사위는 좌표(pos)로 놓인다. 굴릴 때는 이 좌표가 물리 계산으로 움직인다
@@ -614,6 +644,8 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     var over=gameOver(),p=P(),mine=myTurn();
     if(over)tally();
     document.body.classList.toggle('spectate',online&&!mine);
+    var rb=$('result');rb.hidden=!over;
+    if(over){var oc=outcomeHtml();rb.className='result '+oc.cls;rb.innerHTML=oc.html}
     $('say').hidden=!online;
     if(!resetArmed)$('btnReset').textContent=online?'방 나가기':'리셋';
     dice.forEach(function(el,i){
@@ -925,6 +957,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     // 색은 차례와 상관없이 내 줄에. 한 기기에서 여럿이 돌려 가며 할 때는 '나'가 없으니 지금 차례인 줄에
     var humans=ps.filter(function(p){return !p.ai}),me=online?ps.filter(isMe)[0]:humans.length===1?humans[0]:null,mine=me?ps.indexOf(me):S.turn;
     var hi=function(i){return over?total(ps[i])===w.score:i===mine};
+    if(over){var oc=outcomeHtml();h+='<div class="result '+oc.cls+'">'+oc.html+'</div>'}
     if(can){
       h+='<div class="now"><span>'+esc(P().name)+'의 주사위</span>'+S.vals.map(function(v){return '<span class="face flat" data-f="'+v+'">'+PIPS+'</span>'}).join('')+'</div>';
     }
