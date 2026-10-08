@@ -424,7 +424,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 (function(){
   // 배포 도장. 커밋할 때 자동으로 바뀐다. 열려 있는 화면이 예전 버전이면 스스로 새로 받아 온다
   // (온라인에서 기기마다 버전이 다르면 알림 문구 같은 것이 어긋난다)
-  var BUILD='20261008-223039';
+  var BUILD='20261008-223325';
   function checkUpdate(){
     if(location.protocol==='file:')return;
     fetch(location.pathname+'?_='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){
@@ -1501,11 +1501,12 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
       else{try{localStorage.removeItem(ROOMKEY)}catch(e){}netMsg('전에 하던 방이 끝났어요')}
     }).catch(netErr);
   }else if(S.started)render();else{
-    // 초대 링크(?room=12345)로 들어오면 온라인 탭에 방 코드를 채워 둔다
+    // 초대 링크(?room=12345)로 들어오면 온라인 탭에 방 코드를 채워 두고, 쓰던 닉네임이 있으면 바로 입장한다
     var inv=(/[?&]room=(\d{5})(?:&|$)/.exec(location.search)||[])[1];
     if(inv){
-      mode='online';showSetup();$('roomCode').value=inv;netMsg('닉네임을 넣고 입장을 눌러 주세요');
+      mode='online';showSetup();$('roomCode').value=inv;
       try{history.replaceState(null,'',location.pathname)}catch(e){}
+      if($('myName').value.trim())$('btnJoin').click();else netMsg('닉네임을 넣고 입장을 눌러 주세요');
     }else showSetup();
   }
 })();
