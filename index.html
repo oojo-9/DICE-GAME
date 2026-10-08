@@ -231,11 +231,13 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .box .hint{margin:0;font-size:13px;color:var(--ivory-dim);text-align:center}
 .join button{flex:none;height:48px;padding:0 20px;border-radius:12px;border:1.5px solid var(--ivory);font-family:var(--display);font-size:17px}
 .msg{margin:0;min-height:1.4em;text-align:center;color:var(--brass);font-size:14px;word-break:keep-all}
-.code{font-family:var(--display);font-size:60px;line-height:1;letter-spacing:.14em;padding-left:.14em;text-align:center;color:var(--brass);-webkit-user-select:text;user-select:text}
+.code{font-family:var(--display);font-size:60px;line-height:1;letter-spacing:.14em;padding-left:.14em;text-align:center;color:var(--brass);-webkit-user-select:text;user-select:text;cursor:pointer}
 .lobbylist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .lobbylist li{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border:1px solid var(--line);border-radius:12px;font-size:16px}
 .lobbylist li span{color:var(--brass);font-size:13px}
 .box .mini{align-self:center;padding:0 18px}
+.sharerow{display:flex;justify-content:center;gap:8px}
+.sharerow .mini{flex:1 1 0;padding:0 8px}
 /* 온라인에서 남의 차례를 볼 때: 받아온 위치 사이를 부드럽게 잇는다 */
 .spectate #tray .die{transition:left .12s linear,top .12s linear}
 .spectate #tray .cube{transition:transform .12s linear}
@@ -342,6 +344,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     <div class="box" id="lobbyBox" hidden>
       <p class="hint">방 코드 · 친구에게 알려주세요</p>
       <div class="code" id="lobbyCode"></div>
+      <div class="sharerow"><button class="mini" id="btnCopyCode">코드 복사</button><button class="mini" id="btnShare">초대 링크 복사</button></div>
       <ul class="lobbylist" id="lobbyList"></ul>
       <button class="btn roll" id="btnLobbyStart">게임 시작</button>
       <p class="msg" id="lobbyWait">방장이 시작하기를 기다리는 중…</p>
@@ -421,7 +424,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 (function(){
   // 배포 도장. 커밋할 때 자동으로 바뀐다. 열려 있는 화면이 예전 버전이면 스스로 새로 받아 온다
   // (온라인에서 기기마다 버전이 다르면 알림 문구 같은 것이 어긋난다)
-  var BUILD='20261008-000753';
+  var BUILD='20261008-222820';
   function checkUpdate(){
     if(location.protocol==='file:')return;
     fetch(location.pathname+'?_='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){
@@ -1459,6 +1462,32 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     track('game_start',{mode:'online',players:S.players.length});
   });
   $('btnLeave').addEventListener('click',leaveRoom);
+  var copyT=0;
+  function copyText(text,b,label){
+    var done=function(ok){b.textContent=ok?'복사됐어요':'복사 실패 · 직접 적어 주세요';clearTimeout(copyT);copyT=setTimeout(function(){b.textContent=label},1600)};
+    // 보안 컨텍스트가 아니거나 권한이 막힌 브라우저에서는 임시 입력칸을 선택해 복사한다
+    var old=function(){
+      var ta=document.createElement('textarea'),ok=false;
+      ta.value=text;ta.setAttribute('readonly','');ta.style.cssText='position:fixed;top:0;left:0;opacity:0';
+      document.body.appendChild(ta);ta.select();ta.setSelectionRange(0,text.length);
+      try{ok=document.execCommand('copy')}catch(e){}
+      document.body.removeChild(ta);done(ok);
+    };
+    if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(function(){done(true)},old);
+    else old();
+  }
+  function copyCode(){if(room)copyText(room,$('btnCopyCode'),'코드 복사')}
+  $('btnCopyCode').addEventListener('click',copyCode);
+  $('lobbyCode').addEventListener('click',copyCode);
+  // 기기의 공유 창을 띄운다(없는 브라우저에서는 초대 글을 복사). 링크의 ?room= 은 받는 쪽에서 방 코드 칸을 미리 채운다
+  var SHARELABEL=navigator.share?'카톡 등으로 초대 보내기':'초대 링크 복사';
+  $('btnShare').textContent=SHARELABEL;
+  $('btnShare').addEventListener('click',function(){
+    if(!room)return;
+    var text='야추 한 판 해요! 방 코드 '+room,url=location.origin+location.pathname+'?room='+room;
+    if(navigator.share)navigator.share({title:'야추',text:text,url:url}).catch(function(){});
+    else copyText(text+'\n'+url,$('btnShare'),SHARELABEL);
+  });
   try{$('myName').value=localStorage.getItem(NAMEKEY)||''}catch(e){}
 
   layoutDefault();place();
@@ -1471,6 +1500,13 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
       if(st&&(st.players||[]).some(isMe)){netMsg('');attach(savedRoom)}
       else{try{localStorage.removeItem(ROOMKEY)}catch(e){}netMsg('전에 하던 방이 끝났어요')}
     }).catch(netErr);
-  }else if(S.started)render();else showSetup();
+  }else if(S.started)render();else{
+    // 초대 링크(?room=12345)로 들어오면 온라인 탭에 방 코드를 채워 둔다
+    var inv=(/[?&]room=(\d{5})(?:&|$)/.exec(location.search)||[])[1];
+    if(inv){
+      mode='online';showSetup();$('roomCode').value=inv;netMsg('닉네임을 넣고 입장을 눌러 주세요');
+      try{history.replaceState(null,'',location.pathname)}catch(e){}
+    }else showSetup();
+  }
 })();
 </script>
