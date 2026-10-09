@@ -32,8 +32,9 @@
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-/* 홈 화면 앱(iOS)에서는 100%가 실제 화면보다 짧게 잡혀 아래가 비므로 dvh로 화면을 꽉 채운다 */
-html,body{height:100%;height:100dvh}
+/* 아이폰 홈 화면 앱은 화면 높이를 상태 표시줄만큼 짧게 알려 줘서 아래가 빈다(100%, dvh 모두).
+   그때는 스크립트가 실제 화면 높이를 --app-h에 넣어 준다 */
+html,body{height:100%;height:var(--app-h,100dvh)}
 body{margin:0;background:var(--felt-deep);color:var(--ivory);font-family:var(--body);font-size:15px;
   overflow:hidden;overscroll-behavior:none;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
 button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
@@ -67,8 +68,9 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .avail button{flex:none;display:flex;align-items:baseline;gap:6px;height:36px;padding:0 12px;border-radius:10px;border:1.5px solid rgba(224,170,69,.7);font-size:13.5px;color:var(--ivory);white-space:nowrap}
 .avail button b{font-family:var(--display);font-weight:400;font-size:17px;color:var(--brass);font-variant-numeric:tabular-nums}
 .board{flex:1;min-height:0;display:flex;gap:10px;container-type:size}
-/* 주사위 크기는 판의 실제 높이에 맞춘다: 고정칸에 5개(+간격 4개, 라벨·여백 약 80px)가 항상 들어가게 */
-@supports (height:1cqh){.board>*{--d:max(40px,min(17vw,78px,(100cqh - 80px)/5))}}
+/* 쟁반의 주사위는 늘 제 크기. 고정칸의 주사위만 판 높이에 맞춰 줄인다: 5개(+간격 4개, 라벨·여백 약 80px)가 항상 들어가게 */
+@supports (height:1cqh){.keepwrap{--d:max(40px,min(17vw,9.2vh,78px,(100cqh - 80px)/5))}}
+#tray .dprobe{position:absolute;visibility:hidden;pointer-events:none;width:var(--d);height:0}
 .keepwrap{flex:none;display:flex;flex-direction:column;gap:6px;align-items:center;padding:8px 8px 10px;border-radius:14px;background:rgba(0,0,0,.28);border:1px solid var(--line)}
 .keepwrap b{font-family:var(--display);font-weight:400;font-size:14px;letter-spacing:.2em;color:var(--brass);padding-left:.2em}
 .keepstack{position:relative;width:var(--d);flex:1}
@@ -300,6 +302,8 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   color:var(--ivory);font:inherit;font-size:16px;-webkit-user-select:text;user-select:text}
 .names input::placeholder{color:rgba(185,196,180,.55)}
 @media (prefers-reduced-motion:reduce){.btn.score.nudge{animation:none}}
+/* 화면을 덮는 창들도 같은 높이를 쓴다 (inset:0은 짧게 알려 준 높이까지만 덮는다) */
+.sheet,.setup,.notice,.party,.guide,.tut{bottom:auto;height:var(--app-h,100%)}
 </style>
 
 <div class="app">
@@ -319,7 +323,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
       </div>
     </div>
     <div class="tray">
-      <div id="tray"><div class="result" id="result" role="status" hidden></div><button class="sensor ask" id="btnSkip" hidden></button></div>
+      <div id="tray"><i class="dprobe" id="dprobe"></i><div class="result" id="result" role="status" hidden></div><button class="sensor ask" id="btnSkip" hidden></button></div>
       <p class="status" id="status"></p>
     </div>
   </div>
@@ -524,7 +528,14 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 (function(){
   // 배포 도장. 커밋할 때 자동으로 바뀐다. 열려 있는 화면이 예전 버전이면 스스로 새로 받아 온다
   // (온라인에서 기기마다 버전이 다르면 알림 문구 같은 것이 어긋난다)
-  var BUILD='20261009-145334';
+  // 아이폰 홈 화면 앱: 알려 주는 높이가 실제 화면보다 짧으면 실제 화면 높이로 맞춘다
+  function fitH(){
+    if(!navigator.standalone)return;
+    var a=screen.height,b=screen.width,h=window.matchMedia('(orientation:portrait)').matches?Math.max(a,b):Math.min(a,b);
+    document.documentElement.style.setProperty('--app-h',Math.max(window.innerHeight,h)+'px');
+  }
+  fitH();window.addEventListener('resize',fitH);window.addEventListener('orientationchange',function(){setTimeout(fitH,300)});
+  var BUILD='20261009-150154';
   function checkUpdate(){
     if(location.protocol==='file:')return;
     fetch(location.pathname+'?_='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){
@@ -666,7 +677,8 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   function winners(){var best=Math.max.apply(null,S.players.map(total));return {score:best,names:S.players.filter(function(p){return total(p)===best}).map(function(p){return p.name})}}
 
   // 쟁반 안 주사위는 좌표(pos)로 놓인다. 굴릴 때는 이 좌표가 물리 계산으로 움직인다
-  function bounds(){var d=dice[0].offsetWidth||64;return {d:d,w:Math.max(0,tray.clientWidth-d),h:Math.max(0,tray.clientHeight-d)}}
+  // 주사위 크기는 쟁반 기준으로 잰다 (고정칸에 있는 주사위는 더 작을 수 있다)
+  function bounds(){var d=$('dprobe').offsetWidth||64;return {d:d,w:Math.max(0,tray.clientWidth-d),h:Math.max(0,tray.clientHeight-d)}}
   function slots(){
     var b=bounds(),d=b.d,gap=d*.22,W=tray.clientWidth,H=tray.clientHeight,per=W>=3*d+2*gap?3:2,rows=per===3?[3,2]:[2,2,1],out=[];
     var y=(H-(rows.length*d+(rows.length-1)*gap))/2;
