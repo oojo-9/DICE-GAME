@@ -32,7 +32,8 @@
 }
 *{box-sizing:border-box}
 [hidden]{display:none!important}
-html,body{height:100%}
+/* 홈 화면 앱(iOS)에서는 100%가 실제 화면보다 짧게 잡혀 아래가 비므로 dvh로 화면을 꽉 채운다 */
+html,body{height:100%;height:100dvh}
 body{margin:0;background:var(--felt-deep);color:var(--ivory);font-family:var(--body);font-size:15px;
   overflow:hidden;overscroll-behavior:none;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
 button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
@@ -64,7 +65,9 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .avail::-webkit-scrollbar{display:none}
 .avail button{flex:none;display:flex;align-items:baseline;gap:6px;height:36px;padding:0 12px;border-radius:10px;border:1.5px solid rgba(224,170,69,.7);font-size:13.5px;color:var(--ivory);white-space:nowrap}
 .avail button b{font-family:var(--display);font-weight:400;font-size:17px;color:var(--brass);font-variant-numeric:tabular-nums}
-.board{flex:1;min-height:0;display:flex;gap:10px}
+.board{flex:1;min-height:0;display:flex;gap:10px;container-type:size}
+/* 주사위 크기는 판의 실제 높이에 맞춘다: 고정칸에 5개(+간격 4개, 라벨·여백 약 80px)가 항상 들어가게 */
+@supports (height:1cqh){.board>*{--d:max(40px,min(17vw,78px,(100cqh - 80px)/5))}}
 .keepwrap{flex:none;display:flex;flex-direction:column;gap:6px;align-items:center;padding:8px 8px 10px;border-radius:14px;background:rgba(0,0,0,.28);border:1px solid var(--line)}
 .keepwrap b{font-family:var(--display);font-weight:400;font-size:14px;letter-spacing:.2em;color:var(--brass);padding-left:.2em}
 .keepstack{position:relative;width:var(--d);flex:1}
@@ -308,7 +311,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
       <button class="mini" id="btnPhoto">배경 찍기</button>
       <input id="photoInput" type="file" accept="image/*" capture="environment" hidden>
       <button class="mini" id="btnSave">임시저장</button>
-      <button class="mini" id="btnReset">리셋</button>
+      <button class="mini" id="btnReset">방 나가기</button>
     </div>
   </div>
 </div>
@@ -327,7 +330,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     </header>
     <div class="scroll" id="scroll"></div>
     <div class="foot">
-      <button class="btn ghost" id="btnNew">새 게임</button>
+      <button class="btn ghost" id="btnNew" hidden>다시 시작</button>
       <button class="btn roll" id="btnRecord" disabled>기록할 칸을 고르세요</button>
     </div>
   </div>
@@ -411,7 +414,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
           <li><b>점수확인</b> · 점수판을 엽니다. 내 차례에는 칸마다 지금 받을 점수가 미리 보여요.</li>
           <li><b>배경 찍기</b> · 카메라로 찍은 사진을 주사위 판 배경으로 씁니다. 저장되지 않아요.</li>
           <li><b>임시저장</b> · 하던 게임을 이 휴대폰에 저장합니다. 다시 열면 이어서 할 수 있어요.</li>
-          <li><b>리셋 / 방 나가기</b> · 두 번 눌러야 동작합니다. 온라인 게임 도중에는 상대가 동의해야 나갈 수 있어요.</li>
+          <li><b>방 나가기</b> · 두 번 눌러야 동작합니다. 온라인 게임 도중에는 상대가 동의해야 나갈 수 있어요.</li>
         </ul>
       </section>
       <section>
@@ -450,7 +453,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 (function(){
   // 배포 도장. 커밋할 때 자동으로 바뀐다. 열려 있는 화면이 예전 버전이면 스스로 새로 받아 온다
   // (온라인에서 기기마다 버전이 다르면 알림 문구 같은 것이 어긋난다)
-  var BUILD='20261008-225644';
+  var BUILD='20261009-143305';
   function checkUpdate(){
     if(location.protocol==='file:')return;
     fetch(location.pathname+'?_='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){
@@ -507,7 +510,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   var $=function(id){return document.getElementById(id)};
   var esc=function(t){return String(t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
   var PIPS='<i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>';
-  var tray=$('tray'),keep=$('keep'),dice=[],cubes=[],pos=[],vel=[],holding=false,holdStart=0,lastKick=0,releasedAt=0,raf=0,lastT=0,rolling=false,rollTargets=[],rollStart=0,lastMotion=0,quietUntil=0,sensorOk=false,selected=null,newArmed=false;
+  var tray=$('tray'),keep=$('keep'),dice=[],cubes=[],pos=[],vel=[],holding=false,holdStart=0,lastKick=0,releasedAt=0,raf=0,lastT=0,rolling=false,rollTargets=[],rollStart=0,lastMotion=0,quietUntil=0,sensorOk=false,selected=null;
 
   // 정육면체: 마주 보는 면의 합은 7. 정면에 눈 v가 오도록 돌리는 각도와, 그때 위/오른쪽에 보이는 면
   var TILT='rotateX(-17deg) rotateY(-19deg) ';
@@ -632,6 +635,8 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   }
   function clampDice(){if(rolling)return;for(var i=0;i<5;i++)if(dice[i].parentNode===tray)applyPos(i)}
   window.addEventListener('resize',clampDice);
+  // 훈수 줄이 생기거나 사라져 쟁반 크기가 바뀌어도 주사위가 쟁반 밖에 남지 않게 한다
+  if(window.ResizeObserver)new ResizeObserver(clampDice).observe(tray);
   // 아래 줄이 늘거나 줄어 판 높이만 바뀔 때도 주사위를 판 안으로 되돌린다
   if(window.ResizeObserver)new ResizeObserver(clampDice).observe(tray);
 
@@ -647,7 +652,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     var rb=$('result');rb.hidden=!over;
     if(over){var oc=outcomeHtml();rb.className='result '+oc.cls;rb.innerHTML=oc.html}
     $('say').hidden=!online;
-    if(!resetArmed)$('btnReset').textContent=online?'방 나가기':'리셋';
+    if(!resetArmed)$('btnReset').textContent='방 나가기';
     dice.forEach(function(el,i){
       el.classList.toggle('blank',!S.vals[i]);
       el.setAttribute('aria-label',S.vals[i]?('주사위 '+S.vals[i]+(S.held.indexOf(i)>=0?' (고정됨)':'')):'아직 굴리지 않은 주사위');
@@ -752,7 +757,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 
   function beginRoll(quiet){
     if(rolling||!S.started||(!myTurn()&&!aiActing)||!$('sheet').hidden)return false;
-    if(gameOver()){if(!quiet)toast('게임이 끝났어요. 점수확인에서 새 게임을 시작하세요');return false}
+    if(gameOver()){if(!quiet)toast('게임이 끝났어요. 점수확인에서 다시 시작하세요');return false}
     if(S.rollsLeft===0){if(!quiet)toast('세 번 다 흔들었어요. 점수를 기록하세요');return false}
     rollTargets=[0,1,2,3,4].filter(function(i){return S.held.indexOf(i)<0});
     if(!rollTargets.length){if(!quiet)toast('굴릴 주사위가 없어요. 고정을 풀거나 야수의심장을 누르세요');return false}
@@ -995,13 +1000,13 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     if(over){rec.disabled=true;rec.textContent='1등 '+w.names.join(', ')+' · '+w.score+'점'}
     else if(c&&can){rec.disabled=false;rec.textContent=c.name+'에 '+c.fn(S.vals)+'점 기록'}
     else{rec.disabled=true;rec.textContent=can?'기록할 칸을 고르세요':!myTurn()?'지금은 '+P().name+' 차례예요':P().name+' · 먼저 주사위를 흔드세요'}
-    $('btnNew').textContent=newArmed?'한 번 더 누르면 초기화':over?'다시 시작':'새 게임';
+    $('btnNew').hidden=!over;   // 게임이 끝났을 때만 '다시 시작'을 보여 준다
   }
-  function openSheet(){if(rolling||!S.started)return;selected=null;newArmed=false;renderSheet();$('sheet').hidden=false;$('scroll').scrollTop=0;var cur=$('scroll').querySelector('thead th.cur');if(cur&&cur.scrollIntoView)cur.scrollIntoView({block:'nearest',inline:'center'})}
+  function openSheet(){if(rolling||!S.started)return;selected=null;renderSheet();$('sheet').hidden=false;$('scroll').scrollTop=0;var cur=$('scroll').querySelector('thead th.cur');if(cur&&cur.scrollIntoView)cur.scrollIntoView({block:'nearest',inline:'center'})}
   function closeSheet(){$('sheet').hidden=true;quietUntil=Date.now()+600}
   function resetDice(){S.vals=[0,0,0,0,0];S.held=[];S.rollsLeft=3;selected=null;layoutDefault();for(var i=0;i<5;i++)setFace(i,0)}
 
-  // 임시저장: 지금 상태를 이 휴대폰에 저장. 리셋: 이름과 점수까지 전부 지우고 처음 화면으로
+  // 임시저장: 지금 상태를 이 휴대폰에 저장. 방 나가기: 한 기기·AI 대결에서는 이름과 점수까지 전부 지우고 처음 화면으로
   $('btnSave').addEventListener('click',function(){
     if(rolling)return;
     if(online){toast('온라인 방은 자동으로 저장돼요. 방 코드 '+room+'로 다시 들어올 수 있어요');return}
@@ -1028,11 +1033,11 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     setPhoto(URL.createObjectURL(f));
   });
   var resetArmed=false,resetT=0;
-  function disarmReset(){resetArmed=false;clearTimeout(resetT);$('btnReset').textContent=online?'방 나가기':'리셋';$('btnReset').classList.remove('arm')}
+  function disarmReset(){resetArmed=false;clearTimeout(resetT);$('btnReset').textContent='방 나가기';$('btnReset').classList.remove('arm')}
   $('btnReset').addEventListener('click',function(){
     if(rolling)return;
     if(!resetArmed){
-      resetArmed=true;$('btnReset').textContent=!online?'한 번 더 누르면 삭제':midGame()?(leavePending?'한 번 더 누르면 요청 취소':'한 번 더 누르면 퇴장 요청'):'한 번 더 누르면 방 나가기';$('btnReset').classList.add('arm');
+      resetArmed=true;$('btnReset').textContent=!online?'한 번 더 누르면 나가기':midGame()?(leavePending?'한 번 더 누르면 요청 취소':'한 번 더 누르면 퇴장 요청'):'한 번 더 누르면 방 나가기';$('btnReset').classList.add('arm');
       resetT=setTimeout(disarmReset,3000);return;
     }
     disarmReset();
@@ -1048,7 +1053,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   $('btnClose').addEventListener('click',closeSheet);
   $('scroll').addEventListener('click',function(e){
     var r=e.target.closest('button[data-id]');if(!r)return;
-    selected=selected===r.dataset.id?null:r.dataset.id;newArmed=false;
+    selected=selected===r.dataset.id?null:r.dataset.id;
     var y=$('scroll').scrollTop,w=$('scroll').querySelector('.tablewrap'),x=w?w.scrollLeft:0;renderSheet();$('scroll').scrollTop=y;w=$('scroll').querySelector('.tablewrap');if(w)w.scrollLeft=x;
   });
   $('btnRecord').addEventListener('click',function(){
@@ -1064,11 +1069,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     else{closeSheet();toast(P().name+' 차례예요')}
   });
   $('btnNew').addEventListener('click',function(){
-    var any=S.players.some(function(p){return cnt(p)>0});
-    if(!newArmed&&any&&!gameOver()){newArmed=true;renderSheet();return}
-    newArmed=false;
-    if(online||gameOver()){restartSame();return}   // 온라인이거나 게임이 끝났으면 같은 멤버로 다시
-    S.started=false;save();closeSheet();showSetup();
+    if(gameOver())restartSame();   // 게임이 끝났을 때만 보이는 버튼: 같은 멤버로 다시
   });
 
   // 처음 들어올 때: 인원과 닉네임
@@ -1328,15 +1329,18 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     diceIn(v.d,t);
   }
   // 훈수: 말을 누르면 모두의 주사위판 같은 자리에 회색 말풍선이 떨어진다.
-  // 정해진 말은 번호(w)로, 내가 추가한 말은 글자(t)로 보낸다. 추가한 말은 이 기기에만 저장되고 길게 누르면 지워진다
-  var SAY=['야츄','풀하우스','스트레이트','포커','초이스','한 번 더!','멈춰!','나이스','아깝다'],SAYKEY='yachu-say',SAYLEN=12,SAYMAX=8,mySay=[],
+  // 정해진 말은 번호(w)로, 내가 추가한 말은 글자(t)로 보낸다. 추가한 말은 이 기기에만 저장된다.
+  // 길게 누르면 지워진다. 정해진 말은 번호가 바뀌면 안 되므로 이 기기에서 숨기기만 한다(hideSay)
+  var SAY=['야츄','풀하우스','스트레이트','포커','초이스','한 번 더!','멈춰!','나이스','아깝다'],SAYKEY='yachu-say',HIDEKEY='yachu-say-hide',SAYLEN=12,SAYMAX=8,mySay=[],hideSay=[],
       sayRef=null,sayFirst=true,sayT=0,sayHold=0,sayHeld=false;
   try{mySay=(JSON.parse(localStorage.getItem(SAYKEY))||[]).filter(function(x){return typeof x==='string'&&x.trim()}).map(function(x){return x.trim().slice(0,SAYLEN)}).slice(0,SAYMAX)}catch(e){}
-  function keepSay(){try{localStorage.setItem(SAYKEY,JSON.stringify(mySay))}catch(e){}}
+  try{hideSay=(JSON.parse(localStorage.getItem(HIDEKEY))||[]).filter(function(x){return SAY[x]!=null})}catch(e){}
+  function keepSay(){try{localStorage.setItem(SAYKEY,JSON.stringify(mySay));localStorage.setItem(HIDEKEY,JSON.stringify(hideSay))}catch(e){}}
   function drawSay(){
-    $('say').innerHTML=SAY.map(function(w,i){return '<button data-w="'+i+'">'+w+'</button>'}).join('')
+    $('say').innerHTML=SAY.map(function(w,i){return hideSay.indexOf(i)<0?'<button data-w="'+i+'">'+w+'</button>':''}).join('')
       +mySay.map(function(w,i){return '<button data-m="'+i+'">'+esc(w)+'</button>'}).join('')
-      +'<button class="add">+ 내용추가</button>';
+      +'<button class="add">+ 내용추가</button>'
+      +(hideSay.length?'<button class="add back">기본 말 되살리기</button>':'');
   }
   drawSay();
   function addSay(btn){
@@ -1354,11 +1358,13 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     btn.parentNode.replaceChild(inp,btn);inp.focus();
   }
   $('say').addEventListener('pointerdown',function(e){
-    var t=e.target.closest('button[data-m]');
+    var t=e.target.closest('button[data-m],button[data-w]');
     sayHeld=false;clearTimeout(sayHold);
     if(t)sayHold=setTimeout(function(){
-      var w=mySay.splice(+t.dataset.m,1)[0];
-      sayHeld=true;keepSay();drawSay();toast('"'+w+'" 지웠어요');
+      var w,x=$('say').scrollLeft;
+      if(t.dataset.m!=null)w=mySay.splice(+t.dataset.m,1)[0];
+      else{w=SAY[+t.dataset.w];hideSay.push(+t.dataset.w)}
+      sayHeld=true;keepSay();drawSay();$('say').scrollLeft=x;toast('"'+w+'" 지웠어요');
     },650);
   });
   ['pointerup','pointercancel','pointerleave'].forEach(function(n){$('say').addEventListener(n,function(){clearTimeout(sayHold)})});
@@ -1392,6 +1398,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   $('say').addEventListener('click',function(e){
     var t=e.target.closest('button');
     if(sayHeld){sayHeld=false;return}
+    if(t&&t.classList.contains('back')){hideSay=[];keepSay();drawSay();toast('기본 말을 되살렸어요');return}
     if(t&&t.classList.contains('add')){addSay(t);return}
     if(!t||!sayRef||!online||!S.started)return;
     var v={id:myUid,x:+(.28+Math.random()*.44).toFixed(3),y:+(.22+Math.random()*.56).toFixed(3),n:Date.now()};
@@ -1514,7 +1521,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     try{localStorage.removeItem(ROOMKEY)}catch(e){}
     document.body.classList.remove('spectate');
     var su=S.setup;S=fresh();S.setup=su;
-    $('sheet').hidden=true;resetDice();place();mode='online';netMsg('');$('btnReset').textContent='리셋';showSetup();
+    $('sheet').hidden=true;resetDice();place();mode='online';netMsg('');showSetup();
   }
   // 방에서 나가기: 내 자리를 빼고 차례를 맞춰 둔다. 마지막 사람이 나가면 방이 지워진다
   function leaveRoom(){
