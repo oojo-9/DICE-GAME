@@ -93,12 +93,13 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
 .sensor{align-self:center;margin:0;padding:7px 14px;border-radius:999px;border:1px solid var(--line);font-size:12.5px;color:var(--ivory-dim)}
 .sensor.ask{background:var(--brass);color:var(--ink);border-color:var(--brass);font-size:14px;padding:10px 18px}
 .sensor.on{color:var(--brass)}
-/* 센서 안내는 위쪽 '남은 흔들기' 아래에 작게 둔다. 켜지고 나면 자리를 비워 쟁반을 넓힌다 */
+/* 센서 안내는 위쪽 '남은 흔들기' 아래에 작게 둔다. 켜진 뒤에는 누를 때마다 ON/OFF가 바뀌는 스위치가 된다 */
 /* 차례 넘기기는 쟁반 아래쪽에 겹쳐 띄운다. 따로 한 줄을 차지하면 뜰 때마다 쟁반이 줄어든다 */
 #btnSkip{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);z-index:5;max-width:calc(100% - 16px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 4px 12px rgba(0,0,0,.5)}
 #sensor{align-self:flex-end;padding:4px 10px;font-size:11.5px;white-space:nowrap}
 #sensor.ask{padding:6px 12px;font-size:12.5px}
-#sensor.on{display:none}
+#sensor.on{border-color:var(--brass)}
+#sensor.off{color:var(--ivory-dim);border-style:dashed}
 
 /* 주사위: 정육면체를 살짝 비스듬히 본 모양. 멈추면 정면(나온 눈)에만 눈이 보이고 옆면은 비워서 헷갈리지 않게 한다 */
 .die{width:var(--d);height:var(--d);flex:none;position:relative;display:grid;place-items:center;cursor:pointer;
@@ -511,7 +512,8 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
         <h3>알아두면 좋은 것</h3>
         <ul>
           <li>주사위 5개가 모두 같은 눈이면 <b>야츄!</b> 폭죽이 터집니다.</li>
-          <li>흔들어도 안 굴러가면 오른쪽 위 '남은 흔들기' 아래의 센서 표시를 눌러 허용해 주세요. 센서가 켜지면 표시는 사라져요.</li>
+          <li>흔들어도 안 굴러가면 오른쪽 위 '남은 흔들기' 아래의 센서 표시를 눌러 허용해 주세요.</li>
+          <li>센서가 켜지면 표시가 <b>센서 ON</b>으로 바뀝니다. 누를 때마다 <b>ON / OFF</b>가 바뀌고, 꺼 두면 흔들어도 굴러가지 않아 버튼으로만 굴려요.</li>
           <li>카카오톡 안에서 열면 센서가 막힐 수 있으니 사파리나 크롬으로 여세요. 센서가 없어도 흔들기 버튼으로 굴릴 수 있습니다.</li>
         </ul>
       </section>
@@ -535,7 +537,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     document.documentElement.style.setProperty('--app-h',Math.max(window.innerHeight,h)+'px');
   }
   fitH();window.addEventListener('resize',fitH);window.addEventListener('orientationchange',function(){setTimeout(fitH,300)});
-  var BUILD='20261009-150154';
+  var BUILD='20261009-153258';
   function checkUpdate(){
     if(location.protocol==='file:')return;
     fetch(location.pathname+'?_='+Date.now(),{cache:'no-store'}).then(function(r){return r.ok?r.text():''}).then(function(t){
@@ -972,14 +974,16 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   }
 
   // 흔들기 감지
-  var hits=[],listening=false,denied=false;
+  var hits=[],listening=false,denied=false,SENSORKEY='yachu-sensor-off',sensorOff=false;
+  try{sensorOff=!!localStorage.getItem(SENSORKEY)}catch(e){}
   var needAsk=typeof DeviceMotionEvent!=='undefined'&&typeof DeviceMotionEvent.requestPermission==='function';
   function sensorUI(){
     var el=$('sensor'),t,c='sensor';
-    if(sensorOk){t='흔들기 센서 켜짐';c+=' on'}
-    else if(typeof DeviceMotionEvent==='undefined'){t='센서 없음 · 버튼으로 굴리기'}
+    if(typeof DeviceMotionEvent==='undefined'){t='센서 없음 · 버튼으로 굴리기'}
     else if(denied){t='센서 거부됨 · 눌러서 안내 보기'}
     else if(needAsk&&!listening){t='눌러서 흔들기 센서 허용';c+=' ask'}
+    else if(sensorOff){t='센서 OFF';c+=' off'}
+    else if(sensorOk){t='센서 ON';c+=' on'}
     else{t='센서 확인 중…'}
     el.textContent=t;el.className=c;
   }
@@ -988,7 +992,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     if(a&&a.x!=null){seen=true;if(Math.sqrt(a.x*a.x+a.y*a.y+a.z*a.z)>8)strong=true}
     if(g&&g.x!=null){seen=true;if(Math.abs(Math.sqrt(g.x*g.x+g.y*g.y+g.z*g.z)-9.81)>5)strong=true}
     if(seen&&!sensorOk){sensorOk=true;sensorUI()}
-    if(!strong)return;
+    if(!strong||sensorOff)return;
     var now=Date.now();
     if(rolling){lastMotion=now;if(!holding&&now-lastKick>80){lastKick=now;kick(a&&a.x!=null?Math.min(30,Math.sqrt(a.x*a.x+a.y*a.y+a.z*a.z))*26:320)}return}
     if(now<quietUntil||tutOpen)return;
@@ -1005,7 +1009,14 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   }
   if(needAsk){document.addEventListener('click',askSensor)}else if(typeof DeviceMotionEvent!=='undefined'){listen()}
   sensorUI();
-  $('sensor').addEventListener('click',function(){if(denied)toast('센서가 거부됐어요. 브라우저를 완전히 닫았다 다시 열어 허용하세요')});
+  // 센서 표시를 누르면 흔들어서 굴리기를 끄고 켠다. 꺼 두면 버튼으로만 굴린다 (이 기기에 기억)
+  $('sensor').addEventListener('click',function(){
+    if(denied){toast('센서가 거부됐어요. 브라우저를 완전히 닫았다 다시 열어 허용하세요');return}
+    if(!listening)return;
+    sensorOff=!sensorOff;
+    try{if(sensorOff)localStorage.setItem(SENSORKEY,'1');else localStorage.removeItem(SENSORKEY)}catch(e){}
+    sensorUI();toast(sensorOff?'센서를 껐어요. 흔들기 버튼으로 굴리세요':'센서를 켰어요. 흔들어서 굴릴 수 있어요');
+  });
 
   // 같은 사람들로 점수만 지우고 새 판. 온라인이면 방 전체가 같이 새로 시작한다
   function restartSame(){
@@ -1271,7 +1282,7 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   // 튜토리얼: 첫 화면의 튜토리얼 버튼을 누르면 게임 화면을 견본으로 보여 주며 실제 버튼을 차례로 짚어 준다
   var TUT=[
     ['#btnRoll','<b>흔들기</b> · 휴대폰을 흔들거나 이 버튼을 눌러 주사위를 굴려요. 길게 누를수록 세게 굴러요.'],
-    ['.meter','한 차례에 <b>3번</b>까지 굴릴 수 있어요. 남은 횟수가 여기 보여요.'],
+    ['.meter','한 차례에 <b>3번</b>까지 굴릴 수 있어요. 남은 횟수가 여기 보여요. 그 아래 <b>센서 ON / OFF</b>를 누르면 흔들어서 굴리기를 끄고 켤 수 있어요.'],
     ['#tray','굴린 뒤 <b>남기고 싶은 주사위</b>를 누르세요.'],
     ['.keepwrap','누른 주사위는 <b>고정</b> 칸으로 옮겨져요. 다시 굴리면 고정하지 않은 것만 굴러요. 한 번 더 누르면 풀려요.'],
     ['#btnHeart','<b>야수의심장</b> · 고정을 전부 풀어요. 5개를 다 다시 굴리고 싶을 때 써요.'],
@@ -1569,8 +1580,10 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
   });
 
   // 게임 도중 퇴장: 요청을 올리고, 남은 사람이 모두 동의해야 나갈 수 있다
-  var leaveRef=null,leavePending=false,answered=0,leaveVal=null,seenHere={};
-  function voters(){return S.players.filter(function(pl){return pl.id!==myUid&&(pres[pl.id]||!seenHere[pl.id])})}
+  var leaveRef=null,leavePending=false,answered=0,leaveVal=null,presLoaded=false;
+  // 동의를 구할 사람: 지금 접속해 있는 사람. 접속 목록을 아직 못 받았으면 모두에게 묻는다.
+  // (접속한 걸 본 적 없는 사람까지 기다리면, 이미 나간 사람의 답을 영영 기다리게 된다)
+  function voters(){return S.players.filter(function(pl){return pl.id!==myUid&&(pres[pl.id]||!presLoaded)})}
   // 요청한 쪽: 접속 중인 모든 사람이 동의/거절을 고를 때까지 기다린 뒤에 결과를 낸다
   function judgeLeave(){
     var v=leaveVal;
@@ -1658,11 +1671,11 @@ button:focus-visible,.die:focus-visible,input:focus-visible{outline:3px solid va
     liveRef.on('value',onLive);
     leaveRef.on('value',onLeave);
     sayRef=db.ref('rooms/'+code+'/say');sayFirst=true;sayRef.on('value',onSay);
-    lastAct=Date.now();absentAt=0;pres={};seenHere={};
+    lastAct=Date.now();absentAt=0;pres={};presLoaded=false;
     presRef=db.ref('rooms/'+code+'/presence');connRef=db.ref('.info/connected');
     presRef.on('value',function(sn){
-      pres=sn.val()||{};
-      Object.keys(pres).forEach(function(k){seenHere[k]=1;if(newer(pres[k]))checkUpdate()});
+      pres=sn.val()||{};presLoaded=true;
+      Object.keys(pres).forEach(function(k){if(newer(pres[k]))checkUpdate()});
       judgeLeave();
     });
     connRef.on('value',onConn);
